@@ -1,0 +1,61 @@
+diff --git a/src/cli/commands/run.ts b/src/cli/commands/run.ts
+index 46d1f14..d74b2d7 100644
+--- a/src/cli/commands/run.ts
++++ b/src/cli/commands/run.ts
+@@ -23,6 +23,7 @@ interface RunArgs {
+   force?: boolean
+   fromPhase?: PhaseId
+   concurrency?: ConcurrencyConfig
++  waitForSearch?: number
+ }
+ 
+ function generateRunId(): string {
+@@ -82,6 +83,8 @@ export function parseRunArgs(args: string[]): RunArgs | null {
+       concurrency.evaluate = parseInt(args[++i], 10)
+     } else if (arg === "--force") {
+       parsed.force = true
++    } else if (arg === "--wait-for-search") {
++      parsed.waitForSearch = parseInt(args[++i], 10)
+     }
+   }
+ 
+@@ -209,5 +212,6 @@ export async function runCommand(args: string[]): Promise<void> {
+     concurrency: parsed.concurrency,
+     force: parsed.force,
+     phases,
++    waitForSearch: parsed.waitForSearch,
+   })
+ }
+diff --git a/src/orchestrator/index.ts b/src/orchestrator/index.ts
+index 64578bb..b53bec4 100644
+--- a/src/orchestrator/index.ts
++++ b/src/orchestrator/index.ts
+@@ -29,6 +29,7 @@ export interface OrchestratorOptions {
+   force?: boolean
+   questionIds?: string[]
+   phases?: ("ingest" | "indexing" | "search" | "answer" | "evaluate" | "report")[]
++  waitForSearch?: number
+ }
+ 
+ function selectQuestionsBySampling(
+@@ -85,6 +86,7 @@ export class Orchestrator {
+       force = false,
+       questionIds,
+       phases = ["ingest", "indexing", "search", "answer", "evaluate", "report"],
++      waitForSearch,
+     } = options
+ 
+     const judgeModelInfo = resolveModel(judgeModel)
+@@ -265,6 +267,12 @@ export class Orchestrator {
+       await runIndexingPhase(provider, checkpoint, this.checkpointManager, targetQuestionIds)
+     }
+ 
++    if (waitForSearch) {
++      logger.info(`Waiting for ${waitForSearch} seconds before starting search...`)
++      await new Promise((resolve) => setTimeout(resolve, waitForSearch * 1000))
++      logger.info(`Starting search...`)
++    }
++
+     if (phases.includes("search")) {
+       await runSearchPhase(
+         provider,

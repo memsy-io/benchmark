@@ -1,0 +1,208 @@
+diff --git a/src/cli/commands/run.ts b/src/cli/commands/run.ts
+index 46d1f14..c7c7dd4 100644
+--- a/src/cli/commands/run.ts
++++ b/src/cli/commands/run.ts
+@@ -23,6 +23,8 @@ interface RunArgs {
+   force?: boolean
+   fromPhase?: PhaseId
+   concurrency?: ConcurrencyConfig
++  waitForSearch?: number
++  showPassed?: boolean
+ }
+ 
+ function generateRunId(): string {
+@@ -82,6 +84,10 @@ export function parseRunArgs(args: string[]): RunArgs | null {
+       concurrency.evaluate = parseInt(args[++i], 10)
+     } else if (arg === "--force") {
+       parsed.force = true
++    } else if (arg === "--wait-for-search") {
++      parsed.waitForSearch = parseInt(args[++i], 10)
++    } else if (arg === "--show-passed") {
++      parsed.showPassed = true
+     }
+   }
+ 
+@@ -130,6 +136,7 @@ export async function runCommand(args: string[]): Promise<void> {
+     console.log("  --concurrency-answer N    Concurrency for answer phase")
+     console.log("  --concurrency-evaluate N  Concurrency for evaluate phase")
+     console.log("  --force                Clear existing checkpoint and start fresh")
++    console.log("  --show-passed          Show passed scenarios in addition to failed ones")
+     console.log("")
+     console.log(`Available models: ${listAvailableModels().join(", ")}`)
+     return
+@@ -209,5 +216,7 @@
+     concurrency: parsed.concurrency,
+     force: parsed.force,
+     phases,
++    waitForSearch: parsed.waitForSearch,
++    showPassed: parsed.showPassed,
+   })
+ }
+diff --git a/src/judges/base.ts b/src/judges/base.ts
+index bfdddae..4f3039d 100644
+--- a/src/judges/base.ts
++++ b/src/judges/base.ts
+@@ -29,24 +29,47 @@ System's Hypothesis: ${input.hypothesis}`
+ 
+ export function parseJudgeResponse(response: string): JudgeResult {
+   try {
++    // Try parsing as JSON first
+     const jsonMatch = response.match(/\{[\s\S]*\}/)
+-    if (!jsonMatch) {
+-      throw new Error("No JSON found in response")
++    if (jsonMatch) {
++      const parsed = JSON.parse(jsonMatch[0])
++      return {
++        score: parsed.score === 1 ? 1 : 0,
++        label: parsed.label === "correct" ? "correct" : "incorrect",
++        explanation: parsed.explanation || "",
++      }
+     }
+-    const parsed = JSON.parse(jsonMatch[0])
+-    return {
+-      score: parsed.score === 1 ? 1 : 0,
+-      label: parsed.label === "correct" ? "correct" : "incorrect",
+-      explanation: parsed.explanation || "",
++
++    // Fallback: Check for plain text format (e.g. "INCORRECT\n\nExplanation...")
++    const trimmed = response.trim()
++    const firstLine = trimmed.split("\n")[0].toLowerCase()
++
++    if (firstLine.includes("incorrect")) {
++      return {
++        score: 0,
++        label: "incorrect",
++        explanation: trimmed.substring(firstLine.length).trim(),
++      }
+     }
++
++    if (firstLine.includes("correct")) {
++      return {
++        score: 1,
++        label: "correct",
++        explanation: trimmed.substring(firstLine.length).trim(),
++      }
++    }
++
++    throw new Error("Could not determine label from response")
+   } catch {
++    // Final fallback for completely unparseable responses
+     const isCorrect =
+       response.toLowerCase().includes('"correct"') &&
+       !response.toLowerCase().includes('"incorrect"')
+     return {
+       score: isCorrect ? 1 : 0,
+       label: isCorrect ? "correct" : "incorrect",
+-      explanation: "Failed to parse judge response",
++      explanation: "Failed to parse judge response: " + response.substring(0, 200),
+     }
+   }
+ }
+diff --git a/src/orchestrator/index.ts b/src/orchestrator/index.ts
+index 64578bb..b53bec4 100644
+--- a/src/orchestrator/index.ts
++++ b/src/orchestrator/index.ts
+@@ -29,6 +29,8 @@ export interface OrchestratorOptions {
+   force?: boolean
+   questionIds?: string[]
+   phases?: ("ingest" | "indexing" | "search" | "answer" | "evaluate" | "report")[]
++  waitForSearch?: number
++  showPassed?: boolean
+ }
+ 
+ function selectQuestionsBySampling(
+@@ -85,6 +87,8 @@ export class Orchestrator {
+       force = false,
+       questionIds,
+       phases = ["ingest", "indexing", "search", "answer", "evaluate", "report"],
++      waitForSearch,
++      showPassed = false,
+     } = options
+ 
+     const judgeModelInfo = resolveModel(judgeModel)
+@@ -265,6 +269,12 @@ export class Orchestrator {
+       await runIndexingPhase(provider, checkpoint, this.checkpointManager, targetQuestionIds)
+     }
+ 
++    if (waitForSearch) {
++      logger.info(`Waiting for ${waitForSearch} seconds before starting search...`)
++      await new Promise((resolve) => setTimeout(resolve, waitForSearch * 1000))
++      logger.info(`Starting search...`)
++    }
++
+     if (phases.includes("search")) {
+       await runSearchPhase(
+         provider,
+@@ -311,7 +313,7 @@ export class Orchestrator {
+     if (phases.includes("report")) {
+       const report = generateReport(benchmark, checkpoint)
+       saveReport(report)
+-      printReport(report)
++      printReport(report, { showPassed })
+     }
+ 
+     // Flush all pending checkpoint saves before marking as complete
+diff --git a/src/orchestrator/phases/report.ts b/src/orchestrator/phases/report.ts
+index f6cd15c..ab9bfc7 100644
+--- a/src/orchestrator/phases/report.ts
++++ b/src/orchestrator/phases/report.ts
+@@ -237,7 +237,11 @@ function formatLatencyRow(stats: LatencyStats): string {
+   return `${pad(stats.min)} ${pad(stats.max)} ${pad(stats.mean)} ${pad(stats.median)} ${pad(stats.p95)} ${pad(stats.p99)}`
+ }
+ 
+-export function printReport(result: BenchmarkResult): void {
++export interface PrintReportOptions {
++  showPassed?: boolean
++}
++
++export function printReport(result: BenchmarkResult, options: PrintReportOptions = {}): void {
+   console.log("\n" + "=".repeat(60))
+   console.log("MEMORYBENCH RESULTS")
+   console.log("=".repeat(60))
+@@ -292,4 +296,46 @@
+     }
+   }
+   console.log("=".repeat(60) + "\n")
++
++  if (options.showPassed) {
++    const successes = result.evaluations.filter((e) => e.score === 1)
++    if (successes.length > 0) {
++      console.log("PASSED SCENARIOS")
++      console.log("=".repeat(60))
++      successes.forEach((s, i) => {
++        console.log(`\n${i + 1}. [${s.questionType}] ${s.question}`)
++        console.log(`   Expected:    ${s.groundTruth}`)
++        console.log(`   Actual:      ${s.hypothesis}`)
++        console.log(`   Explanation: ${s.explanation}`)
++        console.log(`   ID:          ${s.questionId}`)
++        if (s.retrievalMetrics) {
++          console.log(
++            `   Retrieval:   Hit@${s.retrievalMetrics.k}=${s.retrievalMetrics.hitAtK}, Recall=${s.retrievalMetrics.recallAtK.toFixed(2)}`
++          )
++        }
++        console.log("-".repeat(30))
++      })
++      console.log("\n" + "=".repeat(60) + "\n")
++    }
++  }
++
++  const failures = result.evaluations.filter((e) => e.score !== 1)
++  if (failures.length > 0) {
++    console.log("FAILED SCENARIOS")
++    console.log("=".repeat(60))
++    failures.forEach((f, i) => {
++      console.log(`\n${i + 1}. [${f.questionType}] ${f.question}`)
++      console.log(`   Expected:    ${f.groundTruth}`)
++      console.log(`   Actual:      ${f.hypothesis}`)
++      console.log(`   Explanation: ${f.explanation}`)
++      console.log(`   ID:          ${f.questionId}`)
++      if (f.retrievalMetrics) {
++        console.log(
++          `   Retrieval:   Hit@${f.retrievalMetrics.k}=${f.retrievalMetrics.hitAtK}, Recall=${f.retrievalMetrics.recallAtK.toFixed(2)}`
++        )
++      }
++      console.log("-".repeat(30))
++    })
++    console.log("\n" + "=".repeat(60) + "\n")
++  }
+ }

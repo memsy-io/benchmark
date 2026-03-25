@@ -1,0 +1,145 @@
+diff --git a/src/cli/commands/run.ts b/src/cli/commands/run.ts
+index c7c7dd4..728a799 100644
+--- a/src/cli/commands/run.ts
++++ b/src/cli/commands/run.ts
+@@ -25,6 +25,7 @@ interface RunArgs {
+   concurrency?: ConcurrencyConfig
+   waitForSearch?: number
+   showPassed?: boolean
++  limitRoundRobin?: number
+ }
+ 
+ function generateRunId(): string {
+@@ -52,6 +53,8 @@ export function parseRunArgs(args: string[]): RunArgs | null {
+       parsed.answeringModel = args[++i]
+     } else if (arg === "-l" || arg === "--limit") {
+       parsed.limit = parseInt(args[++i], 10)
++    } else if (arg === "--limit-round-robin") {
++      parsed.limitRoundRobin = parseInt(args[++i], 10)
+     } else if (arg === "-s" || arg === "--sample") {
+       parsed.sample = parseInt(args[++i], 10)
+     } else if (arg === "--sample-type") {
+@@ -137,6 +140,7 @@ export async function runCommand(args: string[]): Promise<void> {
+     console.log("  --concurrency-evaluate N  Concurrency for evaluate phase")
+     console.log("  --force                Clear existing checkpoint and start fresh")
+     console.log("  --show-passed          Show passed scenarios in addition to failed ones")
++    console.log("  --limit-round-robin N  Limit N questions, round-robin across categories")
+     console.log("")
+     console.log(`Available models: ${listAvailableModels().join(", ")}`)
+     return
+@@ -193,7 +197,12 @@ export async function runCommand(args: string[]): Promise<void> {
+   const phases = parsed.fromPhase ? getPhasesFromPhase(parsed.fromPhase) : undefined
+ 
+   let sampling: SamplingConfig | undefined
+-  if (parsed.sample) {
++  if (parsed.limitRoundRobin !== undefined) {
++    sampling = {
++      mode: "limitRoundRobin",
++      limit: parsed.limitRoundRobin,
++    }
++  } else if (parsed.sample) {
+     sampling = {
+       mode: "sample",
+       sampleType: parsed.sampleType || "consecutive",
+diff --git a/src/orchestrator/batch.ts b/src/orchestrator/batch.ts
+index 239c6ae..2d20c37 100644
+--- a/src/orchestrator/batch.ts
++++ b/src/orchestrator/batch.ts
+@@ -62,6 +62,40 @@ function selectQuestionsBySampling(
+   if (sampling.mode === "limit" && sampling.limit) {
+     return allQuestions.slice(0, sampling.limit).map((q) => q.questionId)
+   }
++
++  if (sampling.mode === "limitRoundRobin" && sampling.limit) {
++    const limit = sampling.limit
++    const byType: Record<string, { questionId: string; questionType: string }[]> = {}
++    const categoryOrder: string[] = []
++    for (const q of allQuestions) {
++      if (!byType[q.questionType]) {
++        byType[q.questionType] = []
++        categoryOrder.push(q.questionType)
++      }
++      byType[q.questionType].push(q)
++    }
++    // Shuffle each category so different questions appear across runs
++    for (const cat of categoryOrder) {
++      byType[cat] = [...byType[cat]].sort(() => Math.random() - 0.5)
++    }
++    const selected: string[] = []
++    let round = 0
++    while (selected.length < limit) {
++      let took = 0
++      for (const cat of categoryOrder) {
++        if (selected.length >= limit) break
++        const questions = byType[cat]
++        if (questions[round] !== undefined) {
++          selected.push(questions[round].questionId)
++          took++
++        }
++      }
++      if (took === 0) break
++      round++
++    }
++    return selected
++  }
++
+   if (sampling.mode === "sample" && sampling.perCategory) {
+     const byType: Record<string, { questionId: string; questionType: string }[]> = {}
+     for (const q of allQuestions) {
+diff --git a/src/orchestrator/index.ts b/src/orchestrator/index.ts
+index d79a4a3..be1c94b 100644
+--- a/src/orchestrator/index.ts
++++ b/src/orchestrator/index.ts
+@@ -45,6 +45,39 @@ function selectQuestionsBySampling(
+     return allQuestions.slice(0, sampling.limit).map((q) => q.questionId)
+   }
+ 
++  if (sampling.mode === "limitRoundRobin" && sampling.limit) {
++    const limit = sampling.limit
++    const byType: Record<string, { questionId: string; questionType: string }[]> = {}
++    const categoryOrder: string[] = []
++    for (const q of allQuestions) {
++      if (!byType[q.questionType]) {
++        byType[q.questionType] = []
++        categoryOrder.push(q.questionType)
++      }
++      byType[q.questionType].push(q)
++    }
++    // Shuffle each category so different questions appear across runs
++    for (const cat of categoryOrder) {
++      byType[cat] = [...byType[cat]].sort(() => Math.random() - 0.5)
++    }
++    const selected: string[] = []
++    let round = 0
++    while (selected.length < limit) {
++      let took = 0
++      for (const cat of categoryOrder) {
++        if (selected.length >= limit) break
++        const questions = byType[cat]
++        if (questions[round] !== undefined) {
++          selected.push(questions[round].questionId)
++          took++
++        }
++      }
++      if (took === 0) break
++      round++
++    }
++    return selected
++  }
++
+   if (sampling.mode === "sample" && sampling.perCategory) {
+     const byType: Record<string, { questionId: string; questionType: string }[]> = {}
+     for (const q of allQuestions) {
+diff --git a/src/types/checkpoint.ts b/src/types/checkpoint.ts
+index 48c89e0..89807f9 100644
+--- a/src/types/checkpoint.ts
++++ b/src/types/checkpoint.ts
+@@ -98,7 +98,7 @@ export interface QuestionCheckpoint {
+ 
+ export type RunStatus = "initializing" | "running" | "completed" | "failed"
+ 
+-export type SelectionMode = "full" | "sample" | "limit"
++export type SelectionMode = "full" | "sample" | "limit" | "limitRoundRobin"
+ export type SampleType = "consecutive" | "random"
+ 
+ export interface SamplingConfig {

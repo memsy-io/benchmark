@@ -1,0 +1,49 @@
+diff --git a/src/orchestrator/phases/report.ts b/src/orchestrator/phases/report.ts
+--- a/src/orchestrator/phases/report.ts
++++ b/src/orchestrator/phases/report.ts
+@@ -311,8 +311,22 @@
+         if (s.retrievalMetrics) {
+           console.log(
+             `   Retrieval:   Hit@${s.retrievalMetrics.k}=${s.retrievalMetrics.hitAtK}, Recall=${s.retrievalMetrics.recallAtK.toFixed(2)}`
+           )
+         }
++        if (s.searchResults && s.searchResults.length > 0) {
++          console.log(`   Retrieved Memories (${s.searchResults.length}):`)
++          s.searchResults.forEach((result: any, idx: number) => {
++            const content = result.content || result.text || JSON.stringify(result)
++            const score = result.score?.toFixed(3) || "N/A"
++            const lines = content.split("\n")
++            if (lines.length === 1) {
++              console.log(`      ${idx + 1}. [score: ${score}] ${content}`)
++            } else {
++              console.log(`      ${idx + 1}. [score: ${score}]`)
++              lines.forEach((line: string) => console.log(`         ${line}`))
++            }
++          })
++        }
+         console.log("-".repeat(30))
+       })
+       console.log("\n" + "=".repeat(60) + "\n")
+@@ -346,8 +346,22 @@
+       if (f.retrievalMetrics) {
+         console.log(
+           `   Retrieval:   Hit@${f.retrievalMetrics.k}=${f.retrievalMetrics.hitAtK}, Recall=${f.retrievalMetrics.recallAtK.toFixed(2)}`
+         )
+       }
++      if (f.searchResults && f.searchResults.length > 0) {
++        console.log(`   Retrieved Memories (${f.searchResults.length}):`)
++        f.searchResults.forEach((result: any, idx: number) => {
++          const content = result.content || result.text || JSON.stringify(result)
++          const score = result.score?.toFixed(3) || "N/A"
++          const lines = content.split("\n")
++          if (lines.length === 1) {
++            console.log(`      ${idx + 1}. [score: ${score}] ${content}`)
++          } else {
++            console.log(`      ${idx + 1}. [score: ${score}]`)
++            lines.forEach((line: string) => console.log(`         ${line}`))
++          }
++        })
++      }
+       console.log("-".repeat(30))
+     })
+     console.log("\n" + "=".repeat(60) + "\n")
