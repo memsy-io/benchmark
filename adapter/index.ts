@@ -17,7 +17,7 @@
  *   4. Add "memsy" to ProviderName type in src/types/provider.ts
  */
 
-import { createHash } from "crypto"
+import { createHash } from "crypto";
 import type {
   Provider,
   ProviderConfig,
@@ -25,50 +25,50 @@ import type {
   IngestResult,
   SearchOptions,
   IndexingProgressCallback,
-} from "../../types/provider"
-import type { UnifiedSession, UnifiedMessage } from "../../types/unified"
-import { logger } from "../../utils/logger"
-import { MEMSY_PROMPTS } from "./prompts"
+} from "../../types/provider";
+import type { UnifiedSession, UnifiedMessage } from "../../types/unified";
+import { logger } from "../../utils/logger";
+import { MEMSY_PROMPTS } from "./prompts";
 
 // ============================================================
 // Memsy API wire types
 // ============================================================
 
 interface MemsyEventPayload {
-  org_id: string
-  actor_id: string
-  session_id?: string
-  kind: "user_message" | "assistant_message" | "app_event"
-  content: string
-  ts: string // ISO 8601
-  metadata?: string // opaque JSON string
-  event_id?: string // optional idempotency key; same session → same id → server skips duplicates
+  org_id: string;
+  actor_id: string;
+  session_id?: string;
+  kind: "user_message" | "assistant_message" | "app_event";
+  content: string;
+  ts: string; // ISO 8601
+  metadata?: string; // opaque JSON string
+  event_id?: string; // optional idempotency key; same session → same id → server skips duplicates
 }
 
 interface MemsyIngestRequest {
-  events: MemsyEventPayload[]
+  events: MemsyEventPayload[];
 }
 
 interface MemsyIngestResponse {
-  event_ids: string[]
+  event_ids: string[];
 }
 
 interface MemsySearchResult {
-  id: string
-  content: string
-  score: number
-  metadata?: Record<string, unknown>
+  id: string;
+  content: string;
+  score: number;
+  metadata?: Record<string, unknown>;
 }
 
 interface MemsySearchResponse {
-  results: MemsySearchResult[]
+  results: MemsySearchResult[];
 }
 
 interface MemsyStatusResponse {
-  completedIds: string[]
-  failedIds: string[]
-  pendingIds: string[]
-  total: number
+  completedIds: string[];
+  failedIds: string[];
+  pendingIds: string[];
+  total: number;
 }
 
 // ============================================================
@@ -87,8 +87,8 @@ interface MemsyStatusResponse {
  * the full candidate pool for reranking and diversity selection.
  */
 function getRunScopedOrgId(containerTag: string): string {
-  const convId = conversationIdFromContainerTag(containerTag)
-  return `org_memorybench_${convId}`
+  const convId = conversationIdFromContainerTag(containerTag);
+  return `org_memorybench_${convId}`;
 }
 
 /**
@@ -99,12 +99,12 @@ function deterministicEventId(
   orgId: string,
   sessionId: string,
   ts: string,
-  content: string
+  content: string,
 ): string {
   const h = createHash("sha256")
     .update(orgId + "\0" + sessionId + "\0" + ts + "\0" + content, "utf8")
-    .digest()
-  return "ev_" + h.slice(0, 20).toString("hex")
+    .digest();
+  return "ev_" + h.slice(0, 20).toString("hex");
 }
 
 /**
@@ -113,7 +113,7 @@ function deterministicEventId(
  * This strips the "-session_N" suffix to yield the conversation scope (e.g. "conv-26").
  */
 function conversationIdFromSessionId(sessionId: string): string {
-  return sessionId.replace(/-session_\d+$/, "") || sessionId
+  return sessionId.replace(/-session_\d+$/, "") || sessionId;
 }
 
 /**
@@ -122,7 +122,7 @@ function conversationIdFromSessionId(sessionId: string): string {
  * Strip "-q<N>..." to get the sample_id (e.g. "conv-26-q5-abc" → "conv-26").
  */
 function conversationIdFromContainerTag(containerTag: string): string {
-  return containerTag.replace(/-q\d+.*$/, "") || containerTag
+  return containerTag.replace(/-q\d+.*$/, "") || containerTag;
 }
 
 /**
@@ -142,38 +142,51 @@ function conversationIdFromContainerTag(containerTag: string): string {
  *   "SpeakerName: message content"   (when speaker is present)
  *   "message content"                (when no speaker info)
  */
-function sessionToEvent(session: UnifiedSession, orgId: string): MemsyEventPayload {
-  const rawDate = (session.metadata?.date as string | undefined) ?? new Date().toISOString()
-  const sessionId = session.sessionId ?? ""
-  const convId = conversationIdFromSessionId(sessionId)
+function sessionToEvent(
+  session: UnifiedSession,
+  orgId: string,
+): MemsyEventPayload {
+  const rawDate =
+    (session.metadata?.date as string | undefined) ?? new Date().toISOString();
+  const sessionId = session.sessionId ?? "";
+  const convId = conversationIdFromSessionId(sessionId);
 
   // Per-message image captions: session.metadata.message_images is an optional array
   // (one entry per message, null when no image) populated by the LoCoMo data pipeline.
-  type ImageEntry = { blip_caption: string; speaker: string } | null
-  const messageImages = (session.metadata?.message_images as ImageEntry[] | undefined) ?? []
+  type ImageEntry = { blip_caption: string; speaker: string } | null;
+  const messageImages =
+    (session.metadata?.message_images as ImageEntry[] | undefined) ?? [];
 
   // Build one content string: each message on its own line, speaker-prefixed.
   // If a message has an image caption, prepend it so the LLM extractor sees it.
   const lines = session.messages.map((msg: UnifiedMessage, idx: number) => {
-    const imgData = messageImages[idx]
+    const imgData = messageImages[idx];
     const imgPrefix = imgData?.blip_caption
       ? `[${msg.speaker ?? imgData.speaker} shared an image: ${imgData.blip_caption}] `
-      : ""
-    const content = `${imgPrefix}${msg.content}`
+      : "";
+    const content = `${imgPrefix}${msg.content}`;
     if (msg.speaker) {
-      return `${msg.speaker}: ${content}`
+      return `${msg.speaker}: ${content}`;
     }
     // Fall back to role label when no explicit speaker name
-    const label = msg.role === "user" ? "User" : msg.role === "assistant" ? "Assistant" : "System"
-    return `${label}: ${content}`
-  })
-  const content = lines.join("\n")
+    const label =
+      msg.role === "user"
+        ? "User"
+        : msg.role === "assistant"
+          ? "Assistant"
+          : "System";
+    return `${label}: ${content}`;
+  });
+  const content = lines.join("\n");
 
   // Carry session-level speaker metadata for downstream use
-  const meta: Record<string, string> = {}
-  if (session.metadata?.speakerA) meta.speaker_a = session.metadata.speakerA as string
-  if (session.metadata?.speakerB) meta.speaker_b = session.metadata.speakerB as string
-  const metadata = Object.keys(meta).length > 0 ? JSON.stringify(meta) : undefined
+  const meta: Record<string, string> = {};
+  if (session.metadata?.speakerA)
+    meta.speaker_a = session.metadata.speakerA as string;
+  if (session.metadata?.speakerB)
+    meta.speaker_b = session.metadata.speakerB as string;
+  const metadata =
+    Object.keys(meta).length > 0 ? JSON.stringify(meta) : undefined;
 
   return {
     org_id: orgId,
@@ -184,7 +197,7 @@ function sessionToEvent(session: UnifiedSession, orgId: string): MemsyEventPaylo
     ts: rawDate,
     event_id: deterministicEventId(orgId, sessionId, rawDate, content),
     ...(metadata !== undefined ? { metadata } : {}),
-  }
+  };
 }
 
 // ============================================================
@@ -192,83 +205,95 @@ function sessionToEvent(session: UnifiedSession, orgId: string): MemsyEventPaylo
 // ============================================================
 
 export class MemsyProvider implements Provider {
-  name = "memsy"
-  prompts = MEMSY_PROMPTS
+  name = "memsy";
+  prompts = MEMSY_PROMPTS;
   concurrency = {
     default: 50,
     search: 10,
-  }
-  private baseUrl: string = ""
+  };
+  private baseUrl: string = "";
   /** Event IDs we've already sent this run; skip them on subsequent ingest calls. */
-  private sentEventIds = new Set<string>()
+  private sentEventIds = new Set<string>();
 
   async initialize(config: ProviderConfig): Promise<void> {
-    this.baseUrl = config.baseUrl || process.env.MEMSY_API_URL || "http://localhost:8003"
+    this.baseUrl =
+      config.baseUrl || process.env.MEMSY_API_URL || "http://localhost:8003";
 
     try {
-      const response = await fetch(`${this.baseUrl}/health`)
+      const response = await fetch(`${this.baseUrl}/health`);
       if (!response.ok) {
-        throw new Error(`Health check failed: ${response.status}`)
+        throw new Error(`Health check failed: ${response.status}`);
       }
-      logger.info(`Initialized Memsy provider at ${this.baseUrl}`)
+      logger.info(`Initialized Memsy provider at ${this.baseUrl}`);
     } catch (e) {
-      throw new Error(`Failed to connect to Memsy API at ${this.baseUrl}: ${e}`)
+      throw new Error(
+        `Failed to connect to Memsy API at ${this.baseUrl}: ${e}`,
+      );
     }
   }
 
-  async ingest(sessions: UnifiedSession[], options: IngestOptions): Promise<IngestResult> {
-    const orgId = getRunScopedOrgId(options.containerTag)
+  async ingest(
+    sessions: UnifiedSession[],
+    options: IngestOptions,
+  ): Promise<IngestResult> {
+    const orgId = getRunScopedOrgId(options.containerTag);
 
     // One event per session (not per message)
-    const allEvents: MemsyEventPayload[] = sessions.map((session) => sessionToEvent(session, orgId))
+    const allEvents: MemsyEventPayload[] = sessions.map((session) =>
+      sessionToEvent(session, orgId),
+    );
 
     // Deduplicate: skip sessions already sent this run
     const events = allEvents.filter((e) => {
-      const id = e.event_id ?? deterministicEventId(orgId, e.session_id ?? "", e.ts, e.content)
-      if (this.sentEventIds.has(id)) return false
-      this.sentEventIds.add(id)
-      return true
-    })
+      const id =
+        e.event_id ??
+        deterministicEventId(orgId, e.session_id ?? "", e.ts, e.content);
+      if (this.sentEventIds.has(id)) return false;
+      this.sentEventIds.add(id);
+      return true;
+    });
 
     if (events.length === 0) {
-      logger.debug(`Ingest skipped ${allEvents.length} already-sent sessions`)
-      return { documentIds: [] }
+      logger.debug(`Ingest skipped ${allEvents.length} already-sent sessions`);
+      return { documentIds: [] };
     }
 
-    const requestBody: MemsyIngestRequest = { events }
+    const requestBody: MemsyIngestRequest = { events };
 
     const response = await fetch(`${this.baseUrl}/ingest`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
-    })
+    });
 
     if (!response.ok) {
-      throw new Error(`Ingest failed: ${response.status} ${await response.text()}`)
+      throw new Error(
+        `Ingest failed: ${response.status} ${await response.text()}`,
+      );
     }
 
-    const data = (await response.json()) as MemsyIngestResponse
+    const data = (await response.json()) as MemsyIngestResponse;
     logger.debug(
-      `Ingested ${data.event_ids.length} session events from ${sessions.length} sessions`
-    )
+      `Ingested ${data.event_ids.length} session events from ${sessions.length} sessions`,
+    );
 
-    return { documentIds: data.event_ids }
+    return { documentIds: data.event_ids };
   }
 
   async awaitIndexing(
     result: IngestResult,
     containerTag: string,
-    onProgress?: IndexingProgressCallback
+    onProgress?: IndexingProgressCallback,
   ): Promise<void> {
     if (result.documentIds.length === 0) {
-      onProgress?.({ completedIds: [], failedIds: [], total: 0 })
-      return
+      onProgress?.({ completedIds: [], failedIds: [], total: 0 });
+      return;
     }
 
-    const total = result.documentIds.length
-    let backoffMs = 1000
+    const total = result.documentIds.length;
+    let backoffMs = 1000;
 
-    onProgress?.({ completedIds: [], failedIds: [], total })
+    onProgress?.({ completedIds: [], failedIds: [], total });
 
     while (true) {
       const response = await fetch(`${this.baseUrl}/status`, {
@@ -278,37 +303,37 @@ export class MemsyProvider implements Provider {
           event_ids: result.documentIds,
           containerTag,
         }),
-      })
+      });
 
       if (!response.ok) {
-        logger.warn(`Status check failed: ${response.status}`)
-        await new Promise((r) => setTimeout(r, backoffMs))
-        backoffMs = Math.min(backoffMs * 1.5, 10000)
-        continue
+        logger.warn(`Status check failed: ${response.status}`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+        backoffMs = Math.min(backoffMs * 1.5, 10000);
+        continue;
       }
 
-      const status = (await response.json()) as MemsyStatusResponse
+      const status = (await response.json()) as MemsyStatusResponse;
 
       onProgress?.({
         completedIds: status.completedIds,
         failedIds: status.failedIds,
         total,
-      })
+      });
 
       if (status.pendingIds.length === 0) {
         if (status.failedIds.length > 0) {
-          logger.warn(`${status.failedIds.length} documents failed indexing`)
+          logger.warn(`${status.failedIds.length} documents failed indexing`);
         }
-        return
+        return;
       }
 
-      await new Promise((r) => setTimeout(r, backoffMs))
-      backoffMs = Math.min(backoffMs * 1.2, 5000)
+      await new Promise((r) => setTimeout(r, backoffMs));
+      backoffMs = Math.min(backoffMs * 1.2, 5000);
     }
   }
 
   async search(query: string, options: SearchOptions): Promise<unknown[]> {
-    const orgId = getRunScopedOrgId(options.containerTag)
+    const orgId = getRunScopedOrgId(options.containerTag);
 
     const response = await fetch(`${this.baseUrl}/search`, {
       method: "POST",
@@ -316,32 +341,35 @@ export class MemsyProvider implements Provider {
       body: JSON.stringify({
         query,
         org_id: orgId,
-        limit: options.limit ? options.limit*1 : 10,
+        limit: options.limit ? options.limit * 1 : 10,
         threshold: options.threshold || 0.3,
         include_source_events: true,
       }),
-    })
+    });
 
     if (!response.ok) {
-      throw new Error(`Search failed: ${response.status}`)
+      throw new Error(`Search failed: ${response.status}`);
     }
 
-    const data = (await response.json()) as MemsySearchResponse
-    return data.results
+    const data = (await response.json()) as MemsySearchResponse;
+    return data.results;
   }
 
   async clear(containerTag: string): Promise<void> {
-    const response = await fetch(`${this.baseUrl}/clear/${encodeURIComponent(containerTag)}`, {
-      method: "DELETE",
-    })
+    const response = await fetch(
+      `${this.baseUrl}/clear/${encodeURIComponent(containerTag)}`,
+      {
+        method: "DELETE",
+      },
+    );
 
     if (!response.ok) {
-      logger.warn(`Clear failed: ${response.status}`)
-      return
+      logger.warn(`Clear failed: ${response.status}`);
+      return;
     }
 
-    logger.info(`Cleared memories for container: ${containerTag}`)
+    logger.info(`Cleared memories for container: ${containerTag}`);
   }
 }
 
-export default MemsyProvider
+export default MemsyProvider;
