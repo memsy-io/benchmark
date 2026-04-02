@@ -19,14 +19,14 @@
 
 import { createHash } from "crypto"
 import type {
-  Provider,
-  ProviderConfig,
+  IndexingProgressCallback,
   IngestOptions,
   IngestResult,
+  Provider,
+  ProviderConfig,
   SearchOptions,
-  IndexingProgressCallback,
 } from "../../types/provider"
-import type { UnifiedSession, UnifiedMessage } from "../../types/unified"
+import type { UnifiedMessage, UnifiedSession } from "../../types/unified"
 import { logger } from "../../utils/logger"
 import { MEMSY_PROMPTS } from "./prompts"
 
@@ -229,7 +229,7 @@ export class MemsyProvider implements Provider {
       this.sentEventIds.add(id)
       return true
     })
-
+    
     if (events.length === 0) {
       logger.debug(`Ingest skipped ${allEvents.length} already-sent sessions`)
       return { documentIds: [] }
@@ -254,7 +254,7 @@ export class MemsyProvider implements Provider {
 
     return { documentIds: data.event_ids }
   }
-
+  
   async awaitIndexing(
     result: IngestResult,
     containerTag: string,
@@ -316,7 +316,7 @@ export class MemsyProvider implements Provider {
       body: JSON.stringify({
         query,
         org_id: orgId,
-        limit: options.limit ? options.limit*1 : 10,
+        limit: options.limit ? options.limit * 1 : 10,
         threshold: options.threshold || 0.3,
         include_source_events: true,
       }),
@@ -338,10 +338,14 @@ export class MemsyProvider implements Provider {
     if (!response.ok) {
       logger.warn(`Clear failed: ${response.status}`)
       return
-    }
+  }
 
     logger.info(`Cleared memories for container: ${containerTag}`)
   }
 }
 
 export default MemsyProvider
+
+
+
+
