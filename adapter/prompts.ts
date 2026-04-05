@@ -46,26 +46,10 @@ export const MEMSY_PROMPTS: ProviderPrompts = {
 
     const formattedMemories = atomicMemories
       .map((m, i) => {
-        const typeLabel = m.metadata?.type || "memory";
-        const kindLabel = m.metadata?.kind || "";
-        const weight = m.metadata?.weight?.toFixed(2) || "1.00";
         const dateStr =
           m.metadata?.effective_from || m.metadata?.observed_at || "";
-        const dateNote = dateStr ? `, date: ${dateStr}` : "";
-        // Prefer summary (concise 1-liner) as the header fact; show full content below.
-        const summaryLine = m.metadata?.summary
-          ? `Summary: ${m.metadata.summary}\n`
-          : "";
-        const factsNote =
-          m.metadata?.evidence_facts && m.metadata.evidence_facts.length > 0
-            ? `\nKey facts: ${m.metadata.evidence_facts.join(" | ")}`
-            : "";
-        const entities = m.metadata?.entities;
-        const entitiesNote =
-          entities && entities.length > 0
-            ? `\nEntities: ${entities.slice(0, 8).join(", ")}`
-            : "";
-        return `[${i + 1}] (${kindLabel}/${typeLabel}, weight: ${weight}${dateNote})\n${summaryLine}${m.content}${factsNote}${entitiesNote}`;
+        const dateNote = dateStr ? ` (date: ${dateStr})` : "";
+        return `[${i + 1}]${dateNote}\n${m.content}`;
       })
       .join("\n\n");
 
@@ -105,11 +89,7 @@ export const MEMSY_PROMPTS: ProviderPrompts = {
       ? `Today's date is ${questionDate}. Consider this when interpreting temporal references.\n\n`
       : "";
 
-    return `${dateContext}You are a memory retrieval assistant. Answer the question using ONLY the retrieved memories below.
-Note: Named persons in these memories are third-party individuals being discussed — they are NOT you. Always refer to them by name.
-
-## Retrieved Memories
-${formattedMemories}${backgroundSection}${conversationSection}
+    return `${dateContext}You are a memory retrieval assistant. Named persons in these memories are third-party individuals — always refer to them by name.
 
 ## Question
 ${question}
@@ -121,7 +101,7 @@ Think step by step, then give your final answer on a line that starts with "Answ
 1. Examine all memories and identify which ones relate to the question.
 2. If the answer is directly stated in a single memory, identify it as Memory [N]. Give a clear, direct answer in natural language — include the key specifics (names, dates, places, exact quantities) but phrase it as a direct response to the question. Do not pad with surrounding context from the memory.
 3. If the answer requires linking facts across memories (e.g. first find who X's friend is, then find what that person does), follow the chain step by step: state the intermediate entity, find the memory that names it, then proceed to the next fact.
-4. For date or time questions, use the "date:" field on the relevant memory together with the memory text to determine when the event occurred. Use an exact date where possible (e.g. "7 May 2023"). If the question asks for a duration or relative time, compute it using today's date provided above.
+4. For date or time questions, use the "date:" field on the relevant memory to determine when the event occurred. Use an exact date where possible (e.g. "7 May 2023"). For duration questions ("how long did X last", "how many days/weeks between X and Y"), locate the start and end event memories, read their date fields, and compute the difference explicitly in your reasoning. If a memory has no "date:" field, fall back to its observed_at timestamp. For durations relative to now, compute using today's date provided above.
 5. For list questions, collect ALL matching items across ALL relevant memories — do not stop at the first match. For counting questions ("how many"), enumerate all distinct instances found and give the count. Explicitly scan memories [1] through the last memory in order, noting every memory that adds another item, before finalizing your list.
 6. If memories conflict, prefer the one with the most recent "date:" value.
 7. Before writing Answer:, re-read the original question. Confirm your answer directly addresses what was asked — not a related but different aspect.
@@ -135,6 +115,9 @@ Think step by step, then give your final answer on a line that starts with "Answ
 - Lists: comma-separated, no bullet points.
 - Names / places / events: exact as stated in memories.
 - ONE line after "Answer:" — nothing else.
+
+## Retrieved Memories
+${formattedMemories}${backgroundSection}${conversationSection}
 
 Reasoning:
 [Your step-by-step reasoning]
