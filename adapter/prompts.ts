@@ -106,6 +106,10 @@ Think step by step, then give your final answer on a line that starts with "Answ
 6. If memories conflict, prefer the one with the most recent "date:" value.
 7. Before writing Answer:, re-read the original question. Confirm your answer directly addresses what was asked — not a related but different aspect.
 
+**Date matching:** If a memory's content clearly answers the question but its date is off by a few days, or the year differs while the month and context match, still use that memory's content for your answer. Small date discrepancies in metadata do not invalidate the factual content.
+
+**Name variants:** People may be referred to by different name forms across the question and memories (e.g. "Jon"/"John", "Jean"/"Gina"). If context makes clear two name variants refer to the same person, treat them as the same person.
+
 **Qualifier rule (critical):** Preserve ALL qualifiers — do not drop specifics like "for transgender people", "in the mountains", role titles, or organisation names. If your reasoning identifies "X specifically for Y", your Answer: line must say "X for Y", not just "X".
 
 **Geographic granularity rule:** If the question asks for a country, state, or region name, and the memory contains only a specific city or location within that area, use general geographic knowledge to state the correct country/state/region (e.g. "London" → "United Kingdom", "Chicago" → "United States", "Sydney" → "Australia").
@@ -155,13 +159,13 @@ First, provide a short (one sentence) explanation of your reasoning, then return
 
     const basePrompt = `Your task is to evaluate whether a system's response correctly answers a question about information from prior conversations between users.
 
-I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct.
+I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct. Minor spelling variations or typos (e.g. "Xeonblade" vs "Xenoblade", "Melaine" vs "Melanie") should be treated as correct if the intended answer is clearly the same.
 
 ${judgeBody}`;
 
     const temporalPrompt = `Your task is to evaluate whether a system's response correctly answers a question about information from prior conversations between users.
 
-I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct.
+I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct. Minor spelling variations or typos (e.g. "Xeonblade" vs "Xenoblade", "Melaine" vs "Melanie") should be treated as correct if the intended answer is clearly the same.
 
 For time-related questions, the ground truth will be a specific date, month, year, etc. Be generous with your grading — as long as the response refers to the same date or time period as the ground truth, mark it correct. Accept relative time references (e.g., "last Tuesday", "next month") if they refer to the same time as the ground truth. Accept different date formats (e.g., "May 7th" vs "7 May") as equivalent. Do not penalize off-by-one errors for the number of days, weeks, or months.
 
