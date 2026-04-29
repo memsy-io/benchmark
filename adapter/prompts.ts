@@ -195,7 +195,13 @@ For "Would X likely…?", "What might…?", "What could…?" questions, reason f
 - **Lists:** Answer = union of ALL matching items across ALL memories. Scan [1]–[N] in order; write down every item before compiling the final list.
 - **Enumeration checkpoint (mandatory):** For any question about what a person has, does, knows, visited, or made — before writing Answer:, perform an explicit item scan: go through every memory [1]–[N] and the Conversation Context, and write one line noting each item found and which memory contributed it (e.g. "[2]→Luna, [5]→Oliver, [9]→Bailey"). Compile the final answer only after this enumeration. Never stop at the first memory that appears to give a complete list — a later memory may add items the earlier one did not see.
 - **Cumulative attributes are additive.** Newer memories mentioning some items do NOT cancel older items. Absence ≠ removal. Only exclude if a memory explicitly says removed/sold/lost. Example: older "dog named Oliver" + newer "cats Oliver and Bailey" → full set is {dog Oliver, cat Bailey} unless explicit removal stated.
-- **Counts:** Prefer an explicit frequency/total from any memory over manual tallying. Tally only if no summary exists.
+- **Counts:**
+  - **Stated total wins by default.** When a single memory clearly states the count ("two dogs", "twice", "won 6 games", "usually once or twice a year") and no other memory contradicts it, use it directly — no enumeration needed.
+  - **Enumerate when no clear total exists, or when totals disagree.** List each distinct instance with its date or distinguishing context, then count the list.
+  - **Merge duplicates by event identity:** two memories describing the same event (same approximate date, same subject, same nature) count as one instance — even if worded differently. "Last Friday" plus an explicit Friday date = the same event. Approximate dates are fine; exact matches are not required.
+  - **Count implicit references** like "her other dog" or "the rest of them" — they imply real entities even when unnamed.
+  - **Trust a stated total over a partial enumeration.** If enumeration falls short of an uncontradicted stated count, retrieved memories are likely incomplete — prefer the stated total. Exception: time-anchored ordinals ("his 4th tournament", "the latest of three scripts") are snapshots from a moment, not running totals — enumerate the full timeline and use the higher count if later events exist.
+  - **Date approximation:** never refuse to answer over minor date mismatches. "Last Saturday before Nov 7" ≈ end of October ≈ beginning of November; a Nov 3 memory answers a question about Nov 9 if nothing closer matches.
 - **Single-fact conflicts only:** If two memories give different values for the same atomic fact, prefer the more recent. This NEVER applies to lists or cumulative attributes.
 
 **Rule 7 — Entity attribution: verify the subject before answering.**
