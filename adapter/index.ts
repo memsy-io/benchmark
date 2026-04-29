@@ -341,9 +341,9 @@ export class MemsyProvider implements Provider {
       body: JSON.stringify({
         query,
         org_id: orgId,
-        limit: options.limit ? options.limit * 1 : 10,
+        limit: options.limit ? options.limit * 2.5 : 10,
         threshold: options.threshold || 0.3,
-        include_source_events: true,
+        include_source_events: false,
       }),
     });
 
