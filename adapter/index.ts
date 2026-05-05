@@ -35,7 +35,6 @@ import { MEMSY_PROMPTS } from "./prompts";
 // ============================================================
 
 interface MemsyEventPayload {
-  org_id: string;
   actor_id: string;
   session_id?: string;
   kind: "user_message" | "assistant_message" | "app_event";
@@ -189,7 +188,6 @@ function sessionToEvent(
     Object.keys(meta).length > 0 ? JSON.stringify(meta) : undefined;
 
   return {
-    org_id: orgId,
     actor_id: convId, // conversation-scoped, not session-scoped
     session_id: sessionId, // keep original session_id for provenance
     kind: "user_message",
@@ -262,7 +260,10 @@ export class MemsyProvider implements Provider {
 
     const response = await fetch(`${this.baseUrl}/ingest`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer msy_XXXXXXXXXXXXXXXXX",
+      },
       body: JSON.stringify(requestBody),
     });
 
@@ -298,7 +299,10 @@ export class MemsyProvider implements Provider {
     while (true) {
       const response = await fetch(`${this.baseUrl}/status`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer msy_XXXXXXXXXXXXXXXXX",
+        },
         body: JSON.stringify({
           event_ids: result.documentIds,
           containerTag,
@@ -337,11 +341,13 @@ export class MemsyProvider implements Provider {
 
     const response = await fetch(`${this.baseUrl}/search`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer msy_XXXXXXXXXXXXXXXXX",
+      },
       body: JSON.stringify({
         query,
-        org_id: orgId,
-        limit: options.limit ? options.limit * 2.5 : 10,
+        limit: options.limit ?? 10,
         threshold: options.threshold || 0.3,
         include_source_events: false,
       }),
