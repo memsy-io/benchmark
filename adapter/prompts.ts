@@ -99,17 +99,10 @@ export const MEMSY_PROMPTS: ProviderPrompts = {
             .join("\n\n---\n\n")}`
         : "";
 
-    // Derive a temporal anchor from retrieved memories when the caller hasn't supplied one.
-    // Takes the latest effective_from/observed_at across atomic memories — a close proxy
-    // for "last session date" (what mem0 passes as reference_date).
-    const dateCandidates = atomicMemories
-      .map((m) => m.metadata?.effective_from || m.metadata?.observed_at)
-      .filter((d): d is string => Boolean(d))
-      .sort();
-    const effectiveDate = questionDate || dateCandidates.at(-1);
-
-    const dateContext = effectiveDate
-      ? `Today's date is ${effectiveDate}. Consider this when interpreting temporal references.\n\n`
+    // Only emit a date anchor when the harness supplies an explicit question date.
+    // Falling back to the latest memory date produces wrong anchors for temporal questions.
+    const dateContext = questionDate
+      ? `Today's date is ${questionDate}. Consider this when interpreting temporal references.\n\n`
       : "";
 
     return `${dateContext}You are a memory retrieval assistant. Named persons in these memories are third-party individuals — always refer to them by name.
@@ -186,13 +179,13 @@ First, provide a short (one sentence) explanation of your reasoning, then return
 
     const basePrompt = `Your task is to evaluate whether a system's response correctly answers a question about information from prior conversations between users.
 
-I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct. Minor spelling variations or typos (e.g. "Xeonblade" vs "Xenoblade", "Melaine" vs "Melanie") should be treated as correct if the intended answer is clearly the same.
+I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct.
 
 ${judgeBody}`;
 
     const temporalPrompt = `Your task is to evaluate whether a system's response correctly answers a question about information from prior conversations between users.
 
-I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct. Minor spelling variations or typos (e.g. "Xeonblade" vs "Xenoblade", "Melaine" vs "Melanie") should be treated as correct if the intended answer is clearly the same.
+I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct.
 
 For time-related questions, the ground truth will be a specific date, month, year, etc. Be generous with your grading — as long as the response refers to the same date or time period as the ground truth, mark it correct. Accept relative time references (e.g., "last Tuesday", "next month") if they refer to the same time as the ground truth. Accept different date formats (e.g., "May 7th" vs "7 May") as equivalent. Do not penalize off-by-one errors for the number of days, weeks, or months.
 
