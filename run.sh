@@ -59,6 +59,14 @@ if [ -z "$OPENAI_API_KEY" ]; then
 fi
 echo -e "   ✅ OPENAI_API_KEY is set"
 
+# Check MEMSY_API_KEY
+if [ -z "$MEMSY_API_KEY" ]; then
+    echo -e "${RED}❌ Error: MEMSY_API_KEY is not set.${NC}"
+    echo "   Get your API key from https://app.memsy.io and set it in your .env file."
+    exit 1
+fi
+echo -e "   ✅ MEMSY_API_KEY is set"
+
 # Check bun
 if ! command -v bun &> /dev/null; then
     if [ -f "$HOME/.bun/bin/bun" ]; then
@@ -77,11 +85,11 @@ if [ ! -d "$TARGET_DIR" ]; then
 fi
 echo -e "   ✅ MemoryBench directory exists"
 
-# Check Memsy API is running
-MEMSY_URL="${MEMSY_API_URL:-http://localhost:8003}"
-if ! curl -s --connect-timeout 2 "$MEMSY_URL/health" > /dev/null 2>&1; then
+# Check Memsy API is reachable
+MEMSY_URL="${MEMSY_API_URL:-https://api.memsy.io/v1}"
+if ! curl -s --connect-timeout 5 -H "Authorization: Bearer $MEMSY_API_KEY" "$MEMSY_URL/health" > /dev/null 2>&1; then
     echo -e "${YELLOW}⚠️  Warning: Memsy API not responding at $MEMSY_URL${NC}"
-    echo -e "   Start it with: source .env && .venv/bin/uvicorn memsy.http.api:app --port 8003"
+    echo -e "   Check that MEMSY_API_URL is correct and MEMSY_API_KEY is valid."
     echo ""
     read -p "Continue anyway? (y/N) " -n 1 -r
     echo
@@ -136,7 +144,7 @@ echo ""
 RUN_ID="${RUN_ID:-memsy-run-$(date +%s)}"
 
 # Build command with optional --show-passed flag
-BUN_CMD="cd $TARGET_DIR && MEMSY_API_URL=\"$MEMSY_URL\" bun run src/index.ts run \
+BUN_CMD="cd $TARGET_DIR && MEMSY_API_URL=\"$MEMSY_URL\" MEMSY_API_KEY=\"$MEMSY_API_KEY\" bun run src/index.ts run \
     --provider memsy \
     --benchmark locomo \
     --judge gpt-4.1-mini \
