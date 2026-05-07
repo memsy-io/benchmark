@@ -138,23 +138,25 @@ if ! grep -q 'memsyApiUrl' "$CONFIG_FILE" 2>/dev/null; then
     echo -e "${BLUE}🔧 Patching utils/config.ts...${NC}"
     
     if [[ "$OSTYPE" == "darwin"* ]]; then
-        # Add memsyApiUrl to Config interface
+        # Add memsyApiUrl and memsyApiKey to Config interface
         sed -i '' '/zepApiKey: string/a\
-  memsyApiUrl: string' "$CONFIG_FILE"
-        
-        # Add memsyApiUrl to config object
+  memsyApiUrl: string\
+  memsyApiKey: string' "$CONFIG_FILE"
+
+        # Add memsyApiUrl and memsyApiKey to config object
         sed -i '' '/zepApiKey: process.env.ZEP_API_KEY/a\
-  memsyApiUrl: process.env.MEMSY_API_URL || "http://localhost:8003",' "$CONFIG_FILE"
-        
-        # Add memsy case to getProviderConfig (simpler approach - insert after zepApiKey return line)
+  memsyApiUrl: process.env.MEMSY_API_URL || "https://api.memsy.io/v1",\
+  memsyApiKey: process.env.MEMSY_API_KEY || "",' "$CONFIG_FILE"
+
+        # Add memsy case to getProviderConfig (insert after zepApiKey return line)
         sed -i '' '/return { apiKey: config.zepApiKey }/a\
     case "memsy":\
-      return { apiKey: "", baseUrl: config.memsyApiUrl }' "$CONFIG_FILE"
+      return { apiKey: config.memsyApiKey, baseUrl: config.memsyApiUrl }' "$CONFIG_FILE"
     else
         # Linux sed
-        sed -i '/zepApiKey: string/a\  memsyApiUrl: string' "$CONFIG_FILE"
-        sed -i '/zepApiKey: process.env.ZEP_API_KEY/a\  memsyApiUrl: process.env.MEMSY_API_URL || "http://localhost:8003",' "$CONFIG_FILE"
-        sed -i '/return { apiKey: config.zepApiKey }/a\    case "memsy":\n      return { apiKey: "", baseUrl: config.memsyApiUrl }' "$CONFIG_FILE"
+        sed -i '/zepApiKey: string/a\  memsyApiUrl: string\n  memsyApiKey: string' "$CONFIG_FILE"
+        sed -i '/zepApiKey: process.env.ZEP_API_KEY/a\  memsyApiUrl: process.env.MEMSY_API_URL || "https://api.memsy.io\/v1",\n  memsyApiKey: process.env.MEMSY_API_KEY || "",' "$CONFIG_FILE"
+        sed -i '/return { apiKey: config.zepApiKey }/a\    case "memsy":\n      return { apiKey: config.memsyApiKey, baseUrl: config.memsyApiUrl }' "$CONFIG_FILE"
     fi
     echo -e "   ✅ Patched utils/config.ts"
 else
@@ -229,8 +231,9 @@ echo ""
 echo -e "${GREEN}✅ Setup Complete!${NC}"
 echo ""
 echo -e "Next steps:"
-echo -e "  1. Start Memsy API:  ${BLUE}source .env && .venv/bin/uvicorn memsy.http.api:app --port 8003${NC}"
-echo -e "  2. Run benchmark:    ${BLUE}./benchmark/run.sh [LIMIT] [WAIT_SECS] [SHOW_PASSED]${NC}"
+echo -e "  1. Ensure your .env has:  ${BLUE}MEMSY_API_KEY=<your key>  OPENAI_API_KEY=<your key>${NC}"
+echo -e "     (Get your Memsy API key at https://app.memsy.io)"
+echo -e "  2. Run benchmark:         ${BLUE}./benchmark/run.sh [LIMIT] [WAIT_SECS] [SHOW_PASSED]${NC}"
 echo -e "     Examples:"
 echo -e "       ${BLUE}./benchmark/run.sh 5${NC}          # 5 questions (random sampling)"
 echo -e "       ${BLUE}./benchmark/run.sh 7 10${NC}       # 7 questions, wait 10s for indexing"
