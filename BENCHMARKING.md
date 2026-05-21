@@ -217,13 +217,19 @@ benchmark/
 ├── adapter/              # Memsy provider source
 │   ├── index.ts
 │   └── prompts.ts
+├── patches/              # Custom patches for MemoryBench
+├── results/              # Saved benchmark results
 ├── BENCHMARKING.md       # This file
+├── README.md             # Repo overview and quick start
+├── LICENSE               # MIT
+├── NOTICE                # Upstream attribution
+├── CONTRIBUTING.md       # How to contribute
+├── .env.example          # Environment variable template
 ├── run.sh                # Benchmark runner with logging
 ├── setup.sh              # One-time setup script
-├── patches/              # Custom patches for MemoryBench
-└── results/              # Saved benchmark results
+└── update_patches.sh     # Regenerates patches/ from memorybench/
 
-memorybench/              # Cloned MemoryBench repo (gitignored)
+memorybench/              # Cloned by setup.sh (gitignored — not committed)
 └── src/providers/memsy/  # Injected adapter
 
 .env                      # Your API keys (never commit this)
