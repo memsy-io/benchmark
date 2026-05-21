@@ -1,0 +1,9 @@
+Memsy Benchmark Harness
+Copyright (c) 2026 Memsy
+
+This product includes software developed by supermemory:
+  MemoryBench — https://github.com/supermemoryai/memorybench
+  Copyright (c) 2025 supermemory
+  Licensed under the MIT License
+
+The patches under patches/ modify portions of the MemoryBench codebase.

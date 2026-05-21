@@ -1,0 +1,17 @@
+# Cloned at runtime by setup.sh — do not commit
+memorybench/
+
+# Local secrets
+.env
+.env.*
+!.env.example
+
+# Runtime artifacts
+benchmark_logs/
+node_modules/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.log
