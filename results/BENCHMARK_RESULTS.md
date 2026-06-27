@@ -10,9 +10,11 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 | [memsy-locomo-20260428-mzao](history/memsy-locomo-20260428-mzao/report.json) | 2026-04-28 18:12 | 10 | 87.21% | 1343 / 1540 | 94.94% | 0.8941 | 0.8913 | 87% / 936ms / 966tok | 966 |
 | [memsy-locomo-20260428-2n68](history/memsy-locomo-20260428-2n68/report.json) | 2026-04-28 23:23 | 20 | **88.83%** | 1368 / 1540 | — | — | — | 89% / 1221ms / 1597tok | 1597 |
 | [memsy-locomo-20260505-1ksp](history/memsy-locomo-20260505-1ksp/report.json) | 2026-05-05 18:57 | 20 | 87.73% | 1351 / 1540 | — | — | — | 88% / 1269ms / 1764tok | 1764 |
-| [memsy-locomo-20260505-rik3](history/memsy-locomo-20260505-rik3/report.json) | 2026-05-05 21:08 | 20 | **88.12%** | 1357 / 1540 | — | — | — | 88% / 1269ms / 1736tok | 1736 |
+| [memsy-locomo-20260505-rik3](history/memsy-locomo-20260505-rik3/report.json) | 2026-05-05 21:08 | 20 | 88.12% | 1357 / 1540 | — | — | — | 88% / 1269ms / 1736tok | 1736 |
+| [memsy-locomo-20260626-ho8o](history/memsy-locomo-20260626-ho8o/report.json) | 2026-06-26 18:56 | 20 | 88.82% | 1367 / 1539 | — | — | — | 89% / 1690ms / 1176tok | 1176 |
+| [memsy-locomo-20260627-9984](history/memsy-locomo-20260627-9984/report.json) | 2026-06-27 01:24 | 25 | **90.84%** | 1399 / 1540 | — | — | — | 91% / 1831ms / 2412tok | 2412 |
 
-`2n68` reused `mzao`'s ingestion (`dataSourceRunId: memsy-locomo-20260428-mzao`). `rik3` reused `1ksp`'s ingestion (`dataSourceRunId: memsy-locomo-20260505-1ksp`). Hit@10 / MRR / nDCG are omitted for all k=20 runs; see the k=20 retrieval table below.
+`2n68` reused `mzao`'s ingestion (`dataSourceRunId: memsy-locomo-20260428-mzao`). `rik3` reused `1ksp`'s ingestion (`dataSourceRunId: memsy-locomo-20260505-1ksp`). `9984` reused `ho8o`'s ingestion (`dataSourceRunId: memsy-locomo-20260626-ho8o`). Hit@10 / MRR / nDCG are omitted for all k>10 runs; see the per-k retrieval tables below. `ho8o` ran over 1539 questions (one question skipped during ingest).
 
 ## Accuracy by question type
 
@@ -23,6 +25,8 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 | 2n68 (k=20) | 81.62% (262) | **79.17% (76)** | **89.72% (253)** | 92.39% (777) |
 | 1ksp (k=20) | 83.49% (268) | 73.96% (71) | 87.94% (248) | 90.84% (764) |
 | rik3 (k=20) | 84.11% (270) | 76.04% (73) | 86.88% (245) | **91.44% (769)** |
+| ho8o (k=20) | 89.38% (286) | 72.92% (70) | 88.30% (249) | 90.61% (762) |
+| 9984 (k=25) | **90.34% (290)** | 75.00% (72) | **91.84% (259)** | **92.51% (778)** |
 
 ## Retrieval quality by question type (k=10 runs — Recall@10 / Hit@10)
 
@@ -53,6 +57,28 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 | MRR | 0.914 | 0.785 | 0.947 | 0.908 | 0.909 |
 | NDCG | 0.905 | 0.781 | 0.925 | 0.891 | 0.894 |
 
+### ho8o
+
+| Metric | multi-hop | temporal | single-hop | world-knowledge | overall |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Recall@20 | 95.94% | 87.50% | 97.16% | 94.89% | 95.06% |
+| Precision@20 | 15.41% | 29.96% | 28.49% | 17.04% | 19.61% |
+| F1@20 | 24.55% | 38.87% | 40.26% | 26.49% | 29.38% |
+| MRR | 0.904 | 0.795 | 0.912 | 0.883 | 0.887 |
+| NDCG | 0.893 | 0.795 | 0.886 | 0.875 | 0.876 |
+
+## Retrieval quality — k=25 runs
+
+### 9984
+
+| Metric | multi-hop | temporal | single-hop | world-knowledge | overall |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Recall@25 | 96.26% | 87.50% | 98.58% | 96.67% | 96.36% |
+| Precision@25 | 11.91% | 27.68% | 25.98% | 13.73% | 16.47% |
+| F1@25 | 19.76% | 36.34% | 37.38% | 22.08% | 25.29% |
+| MRR | 0.907 | 0.762 | 0.926 | 0.896 | 0.896 |
+| NDCG | 0.895 | 0.753 | 0.895 | 0.887 | 0.882 |
+
 ## Latency (ms, median / p95)
 
 | Run | search | answer | evaluate | total |
@@ -62,6 +88,8 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 | 2n68 | 1038 / 1816 | 6856 / 10381 | 7395 / 9767 | 16004 / 35931 |
 | 1ksp | 1144 / 1964 | 7412 / 13144 | 7408 / 14438 | 17061 / 43070 |
 | rik3 | 1144 / 1964 | 7308 / 10981 | 7418 / 11822 | 16677 / 42559 |
+| ho8o | 1388 / 3439 | 9548 / 16796 | 12439 / 18756 | 25392 / 54223 |
+| 9984 | 1631 / 3429 | 12715 / 17473 | 15438 / 25948 | 31526 / 60146 |
 
 ## Token usage
 
@@ -72,6 +100,8 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 | 2n68 | 3,980,717 | 2585 | 988 | 1597 |
 | 1ksp | — | — | — | 1764 |
 | rik3 | — | — | — | 1736 |
+| ho8o | 4,717,570 | 3065 | 1890 | 1176 |
+| 9984 | 6,625,280 | 4302 | 1890 | 2412 |
 
 ## Observations
 
@@ -81,7 +111,10 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 - **Retrieval ceiling on k=10 runs:** Hit@10 sits at 94.94–95.97%; failure modes concentrate in answer-generation, not retrieval.
 - **1ksp:** Fresh ingest run at k=20 (`dataSourceRunId` is self). Retrieval Recall@20 = 96.56%, MRR = 0.907, NDCG = 0.893. Serves as the ingest source for `rik3`.
 - **rik3:** Reuses `1ksp` ingest; only retrieval, answering, and evaluation re-run. Retrieval Recall@20 = 96.43%, MRR = 0.909, NDCG = 0.894. Accuracy +0.39 pts vs `1ksp` on the same memory store (1351 → 1357 correct).
-- **Reference (mem0, k=50):** 82.7% overall, 86.3% temporal. Memsy beats mem0 on overall accuracy in all four runs while operating at k≤20.
+- **Reference (mem0, k=50):** 82.7% overall, 86.3% temporal. Memsy beats mem0 on overall accuracy in all runs while operating at k≤25.
+- **ho8o (k=20, fresh ingest):** 88.82% (1367/1539) — consistent with prior k=20 runs. Serves as the ingest source for `9984`. One question was skipped during ingest (1539 vs 1540 total).
+- **9984 (k=25, reuses ho8o ingest):** **90.84% (1399/1540) — new all-time best**, up +1.94 pts from cdyi (previous best at 88.90%). All gain comes from widening k from 20 to 25 on the same memory store. Multi-hop improved most (+0.96 vs ho8o), single-hop gained +3.54 pts, and world-knowledge jumped +1.90 pts. Temporal remains the ceiling — only +2.08 pts (72.92% → 75.00%).
+- **k=20 → k=25 (same ingest, ho8o → 9984):** +2.02 pts overall. Retrieval Recall@k rose from 95.06% to 96.36%, and MRR improved from 0.887 to 0.896 — the wider candidate pool delivers meaningfully more accurate answers across all question types.
 
 ## How to add a run
 

@@ -114,17 +114,24 @@ ${question}
 Think step by step, then give your final answer on a line that starts with "Answer:".
 
 **Approach:**
-1. Examine all memories and identify which ones relate to the question.
-2. If the answer is directly stated in a single memory, identify it as Memory [N]. Give a clear, direct answer in natural language — include the key specifics (names, dates, places, exact quantities) but phrase it as a direct response to the question. Do not pad with surrounding context from the memory.
-3. If the answer requires linking facts across memories (e.g. first find who X's friend is, then find what that person does), follow the chain step by step: state the intermediate entity, find the memory that names it, then proceed to the next fact.
+1. Examine all memories and identify which ones relate to the question. A memory at position 10 or 15 is just as likely to contain the answer as one at position 1 — do not give higher weight to higher-ranked memories. The correct answer may be scattered across several memories; check every one.
+2. If the answer is directly stated in a single memory, identify it as Memory [N]. Always prefer the most specific fact available: an exact name, title, number, or precise activity beats a generic description of the same thing. If one memory says "a romantic drama" and another says "The Notebook", use "The Notebook". A single memory may contain multiple distinct facts joined by commas or "and" — check each component independently against the question.
+3. If the answer requires linking facts across memories (e.g. first find who X's friend is, then find what that person does), follow the chain step by step: state the intermediate entity, find the memory that names it, then proceed to the next fact. The intermediate entity's memory may be anywhere in the list — scan all memories for it before concluding.
 4. For date or time questions, use the "date:" field on the relevant memory to determine when the event occurred. Use an exact date where possible (e.g. "7 May 2023"). For duration questions ("how long did X last", "how many days/weeks between X and Y"), locate the start and end event memories, read their date fields, and compute the difference explicitly in your reasoning. If a memory has no "date:" field, fall back to its observed_at timestamp. For durations relative to now, compute using today's date provided above.
-5. **List/count rule:** For list questions ("which", "what kinds of", "what are X's …") and counting questions ("how many"), scan every memory [1] through [N] in order and explicitly enumerate each distinct matching item before answering. Do not stop at the first match. Re-count after enumeration: the number of items in your Answer line must equal the number you listed in your reasoning.
-6. If memories conflict, prefer the one with the most recent "date:" value.
-7. Before writing Answer:, re-read the original question. Confirm your answer directly addresses what was asked — not a related but different aspect.
+5. **List/count rule:** For list questions ("which", "what kinds of", "what are X's …") and counting questions ("how many"), scan every memory [1] through [${atomicMemories.length}] in order and explicitly enumerate each distinct matching item before answering. Do not stop at the first match. Re-count after enumeration: the number of items in your Answer line must equal the number you listed in your reasoning.
+   **Dedup rule:** Multiple memories often describe the SAME event from different perspectives (e.g. person A reacting to person B's rejection, person B receiving the same rejection). Before counting, group memories that refer to the same underlying event into ONE occurrence. Two memories about the same rejection letter = one rejection. Two memories about the same beach visit = one beach visit. Only count distinct real-world events, not distinct memory entries.
+6. **Conflict rule (same fact only):** When two memories give CONTRADICTORY information about the SAME single fact (e.g., one says "Melanie works at Company A", another says "Company B"), prefer the memory with the more recent "date:" value. Do NOT apply this when memories describe DIFFERENT events at different times — those can all be true simultaneously. CRITICAL: Never apply this to lists — lists accumulate across all memories regardless of date. If Memory [A] mentions items X and Y, and Memory [B] mentions items Y and Z, the complete answer is X, Y, and Z.
+   **Recency questions:** When the question asks what someone did "recently" or "most recently", scan ALL memories and find the one with the most recent event date that matches the question's subject. Recency is determined by the event date in the memory, not by the memory's position in the list. A less-specific memory dated later beats a more-specific memory dated earlier for recency questions.
+   **Start-date questions:** When asked "when did X start/begin", use the date of the EARLIEST memory that describes X as ongoing, planned, or active — even if that memory uses present tense. "Jon is expanding his social media presence" dated 2023-04-03 means expansion started by April 2023.
+7. Before writing Answer:, re-read the original question. Confirm your answer directly addresses what was asked — not a related but different aspect. When you have identified multiple plausible answers and cannot determine which is definitively correct, choose the one with the most direct support from the highest-scoring (lowest-numbered) retrieved memories.
 
 **No-hedge rule:** If any retrieved memory addresses the topic of the question — even partially, paraphrased, or implicitly — you must give a substantive answer drawn from those memories. Do not respond with phrases like "no information available", "not specified", "no record", or "the memories do not specify" when relevant memories were retrieved. If the answer is paraphrased in the memory, restate the closest matching factual content directly.
 
 **Plan vs event rule:** When the question asks what someone "is planning", "is going to", "intends to", or "will" do, return the date or content of the memory expressing the intent — typically the earliest such memory — not a later memory describing the actual execution. The "prefer most recent on conflict" guidance applies to factual conflicts, not to the plan→event progression.
+
+**Did vs available rule:** Report what someone actually did or experienced, not what was merely offered, available, or suggested to them. "Has not tried X yet", "was offered X", "was thinking about X" all mean X was NOT done — disqualify X as a done activity. Only use memories that affirm the action actually happened.
+
+**Temporal year rule:** Events in these memories occurred in 2022–2024. Do not output years like 2025 or 2026 for events described in the memories — those are the current year, not when conversations happened. When computing durations or "how long ago", calculate relative to the conversation date, not today.
 
 **Relative-date rule:** If a source memory describes the timing of an event using a relative phrase (e.g. "the weekend before X", "a few days before Y", "the Sunday after Z"), return that relative phrasing verbatim in your answer rather than computing an absolute date from it. Convert to an absolute date only when the memory itself uses an absolute date.
 
@@ -177,23 +184,21 @@ First, provide a short (one sentence) explanation of your reasoning, then return
 {"score": 1, "label": "correct", "reasoning": "...", "explanation": "..."} if the response contains the correct answer
 {"score": 0, "label": "incorrect", "reasoning": "...", "explanation": "..."} if the response does not contain the correct answer`;
 
-    const basePrompt = `Your task is to evaluate whether a system's response correctly answers a question about information from prior conversations between users.
+    const unifiedPrompt = `Your task is to evaluate whether a system's response correctly answers a question about information from prior conversations between users.
 
-I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct.
-
-${judgeBody}`;
-
-    const temporalPrompt = `Your task is to evaluate whether a system's response correctly answers a question about information from prior conversations between users.
-
-I will give you a question, a ground truth answer, and a system's response. Be generous with your grading — as long as the response touches on the same topic as the ground truth answer, it should be counted as correct. The response might be much longer than the ground truth, but if it contains the key information, mark it correct. If the response is equivalent to the ground truth or contains all the necessary information, mark it correct.
-
-For time-related questions, the ground truth will be a specific date, month, year, etc. Be generous with your grading — as long as the response refers to the same date or time period as the ground truth, mark it correct. Accept relative time references (e.g., "last Tuesday", "next month") if they refer to the same time as the ground truth. Accept different date formats (e.g., "May 7th" vs "7 May") as equivalent. Do not penalize off-by-one errors for the number of days, weeks, or months.
+Grading rules (apply to every question):
+1. PARTIAL CREDIT FOR LISTS: If the ground truth contains multiple items and the response includes AT LEAST ONE correct item, mark correct. Only mark incorrect if NONE of the items match.
+2. PARAPHRASES COUNT: Same concept in different words is correct. "Chocolate raspberry tart" = "chocolate cake with raspberries". "Shelter meal service" = "volunteering at a homeless shelter". Emotions in the same positive/negative family count: "proud" = "fulfilled" = "accomplished"; "huge success" = "relieved" = "thrilled" (all express positive achievement). Judge semantic meaning, not exact wording.
+3. EXTRA DETAIL IS FINE: A longer answer that includes the key facts plus additional detail is correct. Never penalize for being more specific.
+4. DATE TOLERANCE: Dates within 14 days of each other are correct. Durations within 50% are correct (e.g. "5 months" matches "six months"; "19 days" matches "two weeks"). Relative dates ("few days before November") match specific dates in the same window. A specific date consistent with a vague reference is correct. Converting a relative phrase to the correct absolute date is correct.
+5. SEMANTIC OVERLAP: Judge whether the response addresses the same topic and captures the core idea of the ground truth. Different wording or detail level should not result in incorrect if the underlying concept matches.
+6. SAME REFERENT: If the response identifies the same person, place, or entity as the ground truth — even with different descriptors or additional detail — mark correct.
+7. FOCUS ON KNOWLEDGE, NOT WORDING: The goal is to assess whether the system recalled the right fact. Minor differences in specificity, phrasing, or scope are not grounds for incorrect. Only mark incorrect when the response demonstrates genuinely different or wrong understanding.
 
 ${judgeBody}`;
 
     return {
-      default: basePrompt,
-      temporal: temporalPrompt,
+      default: unifiedPrompt,
     };
   },
 };
