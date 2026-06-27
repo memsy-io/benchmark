@@ -1,8 +1,12 @@
 /**
  * Memsy Provider for MemoryBench
  *
- * This provider connects MemoryBench to the local Memsy HTTP API.
- * Requires running the Memsy API server separately.
+ * This provider connects MemoryBench to the hosted Memsy API at
+ * https://api.memsy.io/v1. No local server setup required.
+ *
+ * Required environment variables:
+ *   MEMSY_API_KEY   — your Memsy API key (get one at https://app.memsy.io)
+ *   MEMSY_API_URL   — optional override (default: https://api.memsy.io/v1)
  *
  * IMPORTANT – Avoid duplicate events:
  * - Run the benchmark from THIS repo: cd memsy/memorybench && bun run src/index.ts run ...
@@ -35,7 +39,6 @@ import { MEMSY_PROMPTS } from "./prompts";
 // ============================================================
 
 interface MemsyEventPayload {
-  // org_id: string
   actor_id: string;
   session_id?: string;
   kind: "user_message" | "assistant_message" | "app_event";
@@ -213,6 +216,12 @@ export class MemsyProvider implements Provider {
       config.baseUrl || process.env.MEMSY_API_URL || "https://api.memsy.io/v1";
     this.apiKey = config.apiKey || process.env.MEMSY_API_KEY || "";
 
+    if (!this.apiKey) {
+      throw new Error(
+        "Memsy provider requires an API key. Set MEMSY_API_KEY in your environment or .env file.",
+      );
+    }
+
     try {
       const response = await fetch(`${this.baseUrl}/health`, {
         headers: { Authorization: `Bearer ${this.apiKey}` },
@@ -367,6 +376,7 @@ export class MemsyProvider implements Provider {
       `${this.baseUrl}/clear/${encodeURIComponent(containerTag)}`,
       {
         method: "DELETE",
+        headers: { Authorization: `Bearer ${this.apiKey}` },
       },
     );
 
