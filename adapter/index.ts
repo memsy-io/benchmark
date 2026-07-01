@@ -9,9 +9,10 @@
  *   MEMSY_API_URL   — optional override (default: https://api.memsy.io/v1)
  *
  * IMPORTANT – Avoid duplicate events:
- * - This provider uses run-scoped org_id and sends one event PER SESSION (not per message).
- *   All messages in a session are concatenated into a single content blob so the LLM extractor
- *   sees the full conversation at once, with speaker names already embedded.
+ * - Run the benchmark from THIS repo: cd memsy/memorybench && bun run src/index.ts run ...
+ * - This provider sends one event PER MESSAGE, matching production usage where each message
+ *   turn is its own event. This enables the extraction context window to see real prior turns
+ *   and makes include_source_events return individual messages rather than session blobs.
  *
  * Usage:
  *   1. Copy this file to: memorybench/src/providers/memsy/index.ts
@@ -128,60 +129,32 @@ function conversationIdFromContainerTag(containerTag: string): string {
 }
 
 /**
- * Translate a single UnifiedSession into ONE MemsyEventPayload.
+ * Translate a UnifiedSession into one MemsyEventPayload PER MESSAGE.
  *
- * All messages in the session are concatenated into a single content block
- * so the LLM extractor sees the full conversation at once. Each line is
- * prefixed with the speaker name (if available) so the extractor can
- * attribute facts correctly without needing to read metadata.
+ * Each message turn becomes its own event, matching production usage where
+ * the client sends one event per turn. This allows the extraction context
+ * window to see real prior turns (same session_id) and makes
+ * include_source_events return individual messages rather than blobs.
  *
- * actor_id is set to the conversation-level ID (not the session ID) so that
- * all sessions from the same conversation share one actor scope. This allows
- * search to be scoped to a single conversation, eliminating cross-conversation
- * retrieval noise.
+ * actor_id is the conversation-level ID so all sessions from the same
+ * conversation share one actor scope, eliminating cross-conversation noise.
  *
- * Format per line:
- *   "SpeakerName: message content"   (when speaker is present)
- *   "message content"                (when no speaker info)
+ * Timestamps are synthetic: session date + 1 second per message index.
  */
-function sessionToEvent(
+function sessionToMessages(
   session: UnifiedSession,
   orgId: string,
-): MemsyEventPayload {
+): MemsyEventPayload[] {
   const rawDate =
     (session.metadata?.date as string | undefined) ?? new Date().toISOString();
+  const baseTs = new Date(rawDate).getTime();
   const sessionId = session.sessionId ?? "";
   const convId = conversationIdFromSessionId(sessionId);
 
-  // Per-message image captions: session.metadata.message_images is an optional array
-  // (one entry per message, null when no image) populated by the LoCoMo data pipeline.
   type ImageEntry = { blip_caption: string; speaker: string } | null;
   const messageImages =
     (session.metadata?.message_images as ImageEntry[] | undefined) ?? [];
 
-  // Build one content string: each message on its own line, speaker-prefixed.
-  // If a message has an image caption, prepend it so the LLM extractor sees it.
-  const lines = session.messages.map((msg: UnifiedMessage, idx: number) => {
-    const imgData = messageImages[idx];
-    const imgPrefix = imgData?.blip_caption
-      ? `[${msg.speaker ?? imgData.speaker} shared an image: ${imgData.blip_caption}] `
-      : "";
-    const content = `${imgPrefix}${msg.content}`;
-    if (msg.speaker) {
-      return `${msg.speaker}: ${content}`;
-    }
-    // Fall back to role label when no explicit speaker name
-    const label =
-      msg.role === "user"
-        ? "User"
-        : msg.role === "assistant"
-          ? "Assistant"
-          : "System";
-    return `${label}: ${content}`;
-  });
-  const content = lines.join("\n");
-
-  // Carry session-level speaker metadata for downstream use
   const meta: Record<string, string> = {};
   if (session.metadata?.speakerA)
     meta.speaker_a = session.metadata.speakerA as string;
@@ -190,15 +163,36 @@ function sessionToEvent(
   const metadata =
     Object.keys(meta).length > 0 ? JSON.stringify(meta) : undefined;
 
-  return {
-    actor_id: convId, // conversation-scoped, not session-scoped
-    session_id: sessionId, // keep original session_id for provenance
-    kind: "user_message",
-    content,
-    ts: rawDate,
-    event_id: deterministicEventId(orgId, sessionId, rawDate, content),
-    ...(metadata !== undefined ? { metadata } : {}),
-  };
+  return session.messages.map((msg: UnifiedMessage, idx: number) => {
+    const imgData = messageImages[idx];
+    const imgPrefix = imgData?.blip_caption
+      ? `[${msg.speaker ?? imgData.speaker} shared an image: ${imgData.blip_caption}] `
+      : "";
+    const speakerName =
+      msg.speaker ??
+      (msg.role === "user"
+        ? "User"
+        : msg.role === "assistant"
+          ? "Assistant"
+          : "System");
+    const content = `${speakerName}: ${imgPrefix}${msg.content}`;
+    const ts = new Date(baseTs + idx * 1000).toISOString();
+    const kind: "user_message" | "assistant_message" | "app_event" =
+      msg.role === "user"
+        ? "user_message"
+        : msg.role === "assistant"
+          ? "assistant_message"
+          : "app_event";
+    return {
+      actor_id: convId,
+      session_id: sessionId,
+      kind,
+      content,
+      ts,
+      event_id: deterministicEventId(orgId, sessionId, ts, content),
+      ...(metadata !== undefined ? { metadata } : {}),
+    };
+  });
 }
 
 // ============================================================
@@ -249,12 +243,12 @@ export class MemsyProvider implements Provider {
   ): Promise<IngestResult> {
     const orgId = getRunScopedOrgId(options.containerTag);
 
-    // One event per session (not per message)
-    const allEvents: MemsyEventPayload[] = sessions.map((session) =>
-      sessionToEvent(session, orgId),
+    // One event per message (production model)
+    const allEvents: MemsyEventPayload[] = sessions.flatMap((session) =>
+      sessionToMessages(session, orgId),
     );
 
-    // Deduplicate: skip sessions already sent this run
+    // Deduplicate: skip message events already sent this run
     const events = allEvents.filter((e) => {
       const id =
         e.event_id ??
@@ -265,7 +259,9 @@ export class MemsyProvider implements Provider {
     });
 
     if (events.length === 0) {
-      logger.debug(`Ingest skipped ${allEvents.length} already-sent sessions`);
+      logger.debug(
+        `Ingest skipped ${allEvents.length} already-sent message events`,
+      );
       return { documentIds: [] };
     }
 
@@ -288,7 +284,7 @@ export class MemsyProvider implements Provider {
 
     const data = (await response.json()) as MemsyIngestResponse;
     logger.debug(
-      `Ingested ${data.event_ids.length} session events from ${sessions.length} sessions`,
+      `Ingested ${data.event_ids.length} message events from ${sessions.length} sessions`,
     );
 
     return { documentIds: data.event_ids };
@@ -350,7 +346,7 @@ export class MemsyProvider implements Provider {
   }
 
   async search(query: string, options: SearchOptions): Promise<unknown[]> {
-    const orgId = getRunScopedOrgId(options.containerTag);
+    const convId = conversationIdFromContainerTag(options.containerTag);
 
     const response = await fetch(`${this.baseUrl}/search`, {
       method: "POST",
@@ -360,9 +356,10 @@ export class MemsyProvider implements Provider {
       },
       body: JSON.stringify({
         query,
+        actor_id: convId,
         limit: options.limit ?? 10,
         threshold: options.threshold || 0.3,
-        include_source_events: false,
+        include_source_events: true,
       }),
     });
 

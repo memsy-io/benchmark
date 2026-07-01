@@ -10,13 +10,15 @@ Evaluated on the full **LoCoMo** dataset (1,540 questions). Judge and answerer: 
 
 | Run | k | Accuracy | Hit@10 | MRR |
 |-----|--:|--------:|-------:|----:|
-| [cdyi](results/history/memsy-locomo-20260408-cdyi/report.json) | 10 | **88.90%** | 95.97% | 0.9089 |
+| [cdyi](results/history/memsy-locomo-20260408-cdyi/report.json) | 10 | 88.90% | 95.97% | 0.9089 |
 | [2n68](results/history/memsy-locomo-20260428-2n68/report.json) | 20 | 88.83% | — | — |
 | [rik3](results/history/memsy-locomo-20260505-rik3/report.json) | 20 | 88.12% | — | — |
+| [ho8o](results/history/memsy-locomo-20260626-ho8o/report.json) | 20 | 88.82% | — | — |
+| [9984](results/history/memsy-locomo-20260627-9984/report.json) | 25 | **90.84%** | — | — |
 
 Full breakdown by question type, retrieval quality, and latency: [results/BENCHMARK_RESULTS.md](results/BENCHMARK_RESULTS.md).
 
-**Reference:** mem0 scores 82.7% at k=50 on the same dataset. Memsy beats that in all runs at k≤20.
+**Reference:** mem0 scores 82.7% at k=50 on the same dataset. Memsy beats that in all runs at k≤25.
 
 ## Quick start
 
