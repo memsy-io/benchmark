@@ -49,6 +49,16 @@ export const MEMSY_PROMPTS: ProviderPrompts = {
           content: string;
           ts: string;
         }>;
+        // Arm 3 (never-flip): predecessors this memory superseded, surfaced as
+        // annotations rather than hidden. This list MUST be declared here and
+        // rendered below — this prompt builds from an explicit metadata field
+        // list, so an unlisted metadata key is invisible to the model and arm 3
+        // silently degrades into an exact copy of arm 2.
+        superseded?: Array<{
+          id: string;
+          text: string;
+          effective_from: string | null;
+        }>;
       };
     }>;
 
@@ -63,7 +73,21 @@ export const MEMSY_PROMPTS: ProviderPrompts = {
       .map((m, i) => {
         const iso = m.metadata?.effective_from || m.metadata?.observed_at;
         const display = humanDate(iso) || iso || "unknown date";
-        return `[${i + 1}] (${display})\n${m.content}`;
+        // Arm 3: show what this memory replaced, explicitly marked stale. The
+        // wording has to make obsolescence unmissable — the point of the arm
+        // is to test whether the model can use a superseded fact as context
+        // while still answering with the current one.
+        const superseded = m.metadata?.superseded;
+        const supersededNote =
+          superseded && superseded.length > 0
+            ? `\nPreviously (now SUPERSEDED — do not answer with this):\n${superseded
+                .map((s) => {
+                  const when = humanDate(s.effective_from ?? undefined) || s.effective_from;
+                  return `  - "${s.text}"${when ? ` (as of ${when})` : ""}`;
+                })
+                .join("\n")}`
+            : "";
+        return `[${i + 1}] (${display})\n${m.content}${supersededNote}`;
       })
       .join("\n\n");
 
@@ -121,6 +145,7 @@ Think step by step, then give your final answer on a line that starts with "Answ
 5. **List/count rule:** For list questions ("which", "what kinds of", "what are X's …") and counting questions ("how many"), scan every memory [1] through [${atomicMemories.length}] in order and explicitly enumerate each distinct matching item before answering. Do not stop at the first match. Re-count after enumeration: the number of items in your Answer line must equal the number you listed in your reasoning.
    **Dedup rule:** Multiple memories often describe the SAME event from different perspectives (e.g. person A reacting to person B's rejection, person B receiving the same rejection). Before counting, group memories that refer to the same underlying event into ONE occurrence. Two memories about the same rejection letter = one rejection. Two memories about the same beach visit = one beach visit. Only count distinct real-world events, not distinct memory entries.
 6. **Conflict rule (same fact only):** When two memories give CONTRADICTORY information about the SAME single fact (e.g., one says "Melanie works at Company A", another says "Company B"), prefer the memory with the more recent "date:" value. Do NOT apply this when memories describe DIFFERENT events at different times — those can all be true simultaneously. CRITICAL: Never apply this to lists — lists accumulate across all memories regardless of date. If Memory [A] mentions items X and Y, and Memory [B] mentions items Y and Z, the complete answer is X, Y, and Z.
+   **Superseded rule:** Any text under "Previously (now SUPERSEDED...)" is a fact that has ALREADY been replaced by the memory it sits under. Use it only to understand what changed, and never as the answer itself. If the question asks what something used to be, or when it changed, that superseded text is the correct evidence — but for any question about the present, answer with the memory above it, not the superseded text beneath it.
    **Recency questions:** When the question asks what someone did "recently" or "most recently", scan ALL memories and find the one with the most recent event date that matches the question's subject. Recency is determined by the event date in the memory, not by the memory's position in the list. A less-specific memory dated later beats a more-specific memory dated earlier for recency questions.
    **Start-date questions:** When asked "when did X start/begin", use the date of the EARLIEST memory that describes X as ongoing, planned, or active — even if that memory uses present tense. "Jon is expanding his social media presence" dated 2023-04-03 means expansion started by April 2023.
 7. Before writing Answer:, re-read the original question. Confirm your answer directly addresses what was asked — not a related but different aspect. When you have identified multiple plausible answers and cannot determine which is definitively correct, choose the one with the most direct support from the highest-scoring (lowest-numbered) retrieved memories.
