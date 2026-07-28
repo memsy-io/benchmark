@@ -366,6 +366,58 @@ export class MemsyProvider implements Provider {
     return { documentIds: data.event_ids };
   }
 
+  // The API caps /status's event_ids at 500 (StatusRequest.event_ids,
+  // max_length=500). A single conversation's haystack can exceed that on its
+  // own — 5 of LoCoMo's 10 conversations run 600-690 messages — so one
+  // ingest() call's documentIds routinely overflows a single /status POST.
+  // Sending them all in one request 422s deterministically, every time, for
+  // any conversation over the cap; it isn't a transient/rate-limit failure
+  // the retry-with-backoff loop below can recover from.
+  private readonly STATUS_CHUNK_SIZE = 500;
+
+  private async _statusCheck(
+    documentIds: string[],
+    containerTag: string,
+  ): Promise<MemsyStatusResponse | null> {
+    const chunks: string[][] = [];
+    for (let i = 0; i < documentIds.length; i += this.STATUS_CHUNK_SIZE) {
+      chunks.push(documentIds.slice(i, i + this.STATUS_CHUNK_SIZE));
+    }
+
+    const merged: MemsyStatusResponse = {
+      completedIds: [],
+      failedIds: [],
+      pendingIds: [],
+      total: documentIds.length,
+    }
+
+    for (const chunk of chunks) {
+      const response = await fetch(`${this.baseUrl}/status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          event_ids: chunk,
+          containerTag,
+        }),
+      })
+
+      if (!response.ok) {
+        logger.warn(`Status check failed: ${response.status}`)
+        return null
+      }
+
+      const status = (await response.json()) as MemsyStatusResponse
+      merged.completedIds.push(...status.completedIds)
+      merged.failedIds.push(...status.failedIds)
+      merged.pendingIds.push(...status.pendingIds)
+    }
+
+    return merged
+  }
+
   async awaitIndexing(
     result: IngestResult,
     containerTag: string,
@@ -382,26 +434,13 @@ export class MemsyProvider implements Provider {
     onProgress?.({ completedIds: [], failedIds: [], total });
 
     while (true) {
-      const response = await fetch(`${this.baseUrl}/status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          event_ids: result.documentIds,
-          containerTag,
-        }),
-      });
+      const status = await this._statusCheck(result.documentIds, containerTag)
 
-      if (!response.ok) {
-        logger.warn(`Status check failed: ${response.status}`);
+      if (status === null) {
         await new Promise((r) => setTimeout(r, backoffMs));
         backoffMs = Math.min(backoffMs * 1.5, 10000);
         continue;
       }
-
-      const status = (await response.json()) as MemsyStatusResponse;
 
       onProgress?.({
         completedIds: status.completedIds,
