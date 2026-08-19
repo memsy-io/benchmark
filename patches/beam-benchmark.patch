@@ -1,0 +1,518 @@
+diff --git a/src/benchmarks/beam/index.ts b/src/benchmarks/beam/index.ts
+new file mode 100644
+index 0000000..b818806
+--- /dev/null
++++ b/src/benchmarks/beam/index.ts
+@@ -0,0 +1,380 @@
++import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs"
++import { join, dirname } from "path"
++import type { Benchmark, BenchmarkConfig, QuestionFilter } from "../../types/benchmark"
++import type {
++  UnifiedQuestion,
++  UnifiedSession,
++  UnifiedMessage,
++  QuestionTypeRegistry,
++} from "../../types/unified"
++import type { BeamBatch, BeamChat, BeamProbingQuestions } from "./types"
++import { logger } from "../../utils/logger"
++
++const GITHUB_BASE_URL = "https://raw.githubusercontent.com/mohammadtavakoli78/BEAM/main/chats"
++
++// The 100K tier of the BEAM repo: 20 conversations of ~100K tokens each.
++// The repo also ships 500K (35 convs), 1M (35 convs) and 10M (10 convs) tiers.
++const BEAM_TIER = "100K"
++const BEAM_CONVERSATION_COUNT = 20
++
++const DOWNLOAD_CONCURRENCY = 4
++
++export const BEAM_QUESTION_TYPES: QuestionTypeRegistry = {
++  contradiction_resolution: {
++    id: "contradiction_resolution",
++    alias: "contradiction",
++    description: "Contradiction resolution",
++  },
++  event_ordering: { id: "event_ordering", alias: "ordering", description: "Event ordering" },
++  information_extraction: {
++    id: "information_extraction",
++    alias: "extraction",
++    description: "Information extraction",
++  },
++  instruction_following: {
++    id: "instruction_following",
++    alias: "instruction",
++    description: "Instruction following",
++  },
++  knowledge_update: { id: "knowledge_update", alias: "update", description: "Knowledge update" },
++  multi_session_reasoning: {
++    id: "multi_session_reasoning",
++    alias: "multi",
++    description: "Multi-session reasoning",
++  },
++  preference_following: {
++    id: "preference_following",
++    alias: "pref",
++    description: "Preference following",
++  },
++  summarization: { id: "summarization", alias: "summary", description: "Summarization" },
++  temporal_reasoning: {
++    id: "temporal_reasoning",
++    alias: "temporal",
++    description: "Temporal reasoning",
++  },
++}
++
++// The abstention (unanswerable) category is intentionally excluded from the
++// benchmark, mirroring LoCoMo's exclusion of its adversarial category.
++const EXCLUDED_CATEGORIES = new Set(["abstention"])
++
++/** Parse BEAM time anchors like "March-01-2024" */
++function parseBeamDate(dateStr: string): { iso: string; formatted: string } | null {
++  const match = dateStr.match(/^(\w+)-(\d{1,2})-(\d{4})$/)
++  if (!match) {
++    logger.warn(`Failed to parse BEAM date: "${dateStr}" - skipping date metadata`)
++    return null
++  }
++  const [, monthName, day, year] = match
++  const monthNames = [
++    "january",
++    "february",
++    "march",
++    "april",
++    "may",
++    "june",
++    "july",
++    "august",
++    "september",
++    "october",
++    "november",
++    "december",
++  ]
++  const month = monthNames.findIndex((n) => n.startsWith(monthName.toLowerCase()))
++  if (month === -1) {
++    logger.warn(`Failed to parse BEAM date: "${dateStr}" - skipping date metadata`)
++    return null
++  }
++  const date = new Date(Date.UTC(parseInt(year), month, parseInt(day)))
++  return { iso: date.toISOString(), formatted: `${day} ${monthName}, ${year}` }
++}
++
++/**
++ * Longest run of spaces preserved verbatim. 12 = three levels of 4-space
++ * markdown/code indentation, so ordinary formatting is untouched.
++ */
++const MAX_SPACE_RUN = 12
++
++/**
++ * Longest run of an identical 1-2 char line preserved verbatim.
++ *
++ * Measured over all 20 100K conversations, the longest *legitimate* run is 5
++ * (`}` closing nested code blocks; next largest are 4 and 3). The pathological
++ * case is 25,498. At 12 there is a 2.4x margin above anything real, so ordinary
++ * code formatting is untouched.
++ */
++const MAX_REPEAT_LINE_RUN = 12
++
++/**
++ * Collapse runaway whitespace padding.
++ *
++ * Some BEAM assistant turns contain ASCII-art diagrams whose right border is
++ * pushed hundreds of columns out, so the message is almost entirely spaces.
++ * conv 4 / batch 2 / id 97 is 348,853 chars of which 345,211 are spaces —
++ * ~3,600 chars of real content. Such a message blows past any sane event
++ * content cap on ingest and is rejected with a 422, silently dropping a whole
++ * turn of conversation from the haystack.
++ *
++ * The padding carries no information: at 776 columns wide the diagram is not
++ * legible in any renderer, and the extraction LLM tokenizes the space runs
++ * away regardless. Collapsing is dataset-wide (not conv-4-specific) so future
++ * conversations and the 500K/1M/10M tiers are covered without config changes.
++ *
++ * The same runaway-generation artefact also appears vertically: conv 5 / batch 2
++ * / id 123 is 25,496 consecutive lines each holding a single "/" — a tree-diagram
++ * branch the generator never terminated. That one is 52,842 chars after the
++ * horizontal rules above, still over the server's 32,000-char content cap, so it
++ * needs collapsing too. Neither the blank-line rule nor the space rule touches
++ * it: the lines are non-blank and one char wide.
++ *
++ * Measured over all 20 100K conversations: 411 of 5,732 messages change, with
++ * a median reduction of 3 chars (trailing whitespace only). The largest
++ * message drops from 348,853 to 16,351 chars; the repeated-line case drops from
++ * 52,842 to 1,874. With all rules applied no event exceeds the 32,000-char cap.
++ */
++function normalizeWhitespace(content: string): string {
++  return (
++    content
++      // Trailing whitespace per line — never meaningful. Runs first so that
++      // lines of pure whitespace become empty, feeding the blank-line rule, and
++      // so trailing-space variation does not defeat the repeated-line rule.
++      .replace(/[ \t]+$/gm, "")
++      // Runaway horizontal padding. The lookbehind restricts this to runs that
++      // follow visible text, i.e. mid-line filler such as the gap between an
++      // ASCII diagram's left and right borders. Leading indentation is left
++      // alone — conversations contain HTML/Python code blocks nested well past
++      // MAX_SPACE_RUN, where indentation is meaningful (and load-bearing in
++      // Python). Restricting to mid-line runs still removes 342,265 of conv 4 /
++      // id 97's 345,211 spaces, so the pathological case is fully handled.
++      .replace(new RegExp(`(?<=\\S) {${MAX_SPACE_RUN + 1},}`, "g"), " ".repeat(MAX_SPACE_RUN))
++      // Runaway vertical padding: the same 1-2 char line repeated. The
++      // backreference requires the repeats to be byte-identical, so this only
++      // fires on mechanical repetition, never on a block of distinct short
++      // lines. Capped at 1-2 chars so a repeated line of real content is never
++      // a candidate.
++      .replace(
++        new RegExp(`^([^\\n]{1,2})(?:\\n\\1){${MAX_REPEAT_LINE_RUN},}`, "gm"),
++        (_match, line: string) => Array(MAX_REPEAT_LINE_RUN).fill(line).join("\n")
++      )
++      // Blank-line floods. Runs last so that collapsing the rules above cannot
++      // leave a new flood behind.
++      .replace(/\n{4,}/g, "\n\n\n")
++  )
++}
++
++/**
++ * Strip trailing "->-> i,j" reference markers BEAM appends to user messages,
++ * then collapse runaway whitespace padding.
++ */
++function cleanContent(content: string): string {
++  const withoutMarker = content.replace(/\s*->->\s*\d+\s*,\s*\d+\s*$/, "")
++  return normalizeWhitespace(withoutMarker)
++}
++
++function extractGroundTruth(q: Record<string, unknown>): string {
++  const value =
++    q.answer ?? q.ideal_answer ?? q.ideal_response ?? q.ideal_summary ?? q.expected_compliance
++  if (value === undefined || value === null) return ""
++  return typeof value === "string" ? value : JSON.stringify(value)
++}
++
++async function downloadFile(url: string, destPath: string): Promise<void> {
++  const response = await fetch(url)
++  if (!response.ok) {
++    throw new Error(`Failed to download ${url}: ${response.status}`)
++  }
++  const data = await response.text()
++  mkdirSync(dirname(destPath), { recursive: true })
++  writeFileSync(destPath, data)
++}
++
++export class Beam100KBenchmark implements Benchmark {
++  name = "beam100k"
++  private questions: UnifiedQuestion[] = []
++  private sessionsMap: Map<string, UnifiedSession[]> = new Map()
++
++  async load(config?: BenchmarkConfig): Promise<void> {
++    const dataPath = config?.dataPath || "./data/benchmarks/beam"
++    const fullPath = join(process.cwd(), dataPath)
++
++    await this.ensureDownloaded(fullPath)
++
++    for (let num = 1; num <= BEAM_CONVERSATION_COUNT; num++) {
++      this.processConversation(fullPath, num)
++    }
++
++    logger.info(
++      `Loaded ${this.questions.length} questions from ${BEAM_CONVERSATION_COUNT} ${this.name} conversations`
++    )
++  }
++
++  private localDir(fullPath: string, num: number): string {
++    return join(fullPath, BEAM_TIER, String(num))
++  }
++
++  private async ensureDownloaded(fullPath: string): Promise<void> {
++    const all = Array.from({ length: BEAM_CONVERSATION_COUNT }, (_, i) => i + 1)
++    const missing = all.filter((num) => {
++      const dir = this.localDir(fullPath, num)
++      return !existsSync(join(dir, "chat.json")) || !existsSync(join(dir, "probing_questions.json"))
++    })
++    if (missing.length === 0) return
++
++    logger.info(
++      `Downloading ${missing.length} ${this.name} conversations from GitHub (~11 MB total, one-time)...`
++    )
++
++    let done = 0
++    for (let i = 0; i < missing.length; i += DOWNLOAD_CONCURRENCY) {
++      const chunk = missing.slice(i, i + DOWNLOAD_CONCURRENCY)
++      await Promise.all(
++        chunk.map(async (num) => {
++          const dir = this.localDir(fullPath, num)
++          const remote = `${GITHUB_BASE_URL}/${BEAM_TIER}/${num}`
++          await downloadFile(`${remote}/chat.json`, join(dir, "chat.json"))
++          await downloadFile(
++            `${remote}/probing_questions/probing_questions.json`,
++            join(dir, "probing_questions.json")
++          )
++          done++
++          logger.info(
++            `Downloaded ${this.name} conversation ${BEAM_TIER}/${num} (${done}/${missing.length})`
++          )
++        })
++      )
++    }
++    logger.success(`Downloaded ${this.name} dataset to ${join(fullPath, BEAM_TIER)}`)
++  }
++
++  private processConversation(fullPath: string, num: number): void {
++    const dir = this.localDir(fullPath, num)
++    const sampleId = `beam-${BEAM_TIER}-${num}`
++
++    const chat: BeamChat = JSON.parse(readFileSync(join(dir, "chat.json"), "utf8"))
++    // Each question is grounded ONLY in its own conversation's sessions
++    const sessions = this.extractSessions(sampleId, chat)
++    const sessionIds = sessions.map((s) => s.sessionId)
++
++    const probing: BeamProbingQuestions = JSON.parse(
++      readFileSync(join(dir, "probing_questions.json"), "utf8")
++    )
++
++    // Conversation-global question index. The question id must strip to the
++    // conversation id (`<sampleId>`) via conversationIdFromContainerTag's
++    // `-q\d+` rule so that the search-time actor_id matches the ingest-time
++    // actor_id. Encoding the category in the id (e.g. `-abstention-q0`) breaks
++    // that strip and desyncs the scope, so the category lives only in
++    // `questionType`. A flat `-q<n>` counter keeps ids unique across categories.
++    let qIdx = 0
++    for (const [category, categoryQuestions] of Object.entries(probing)) {
++      // Checked before the unknown-category warning below so an excluded
++      // category is skipped silently rather than logged as unrecognised.
++      if (EXCLUDED_CATEGORIES.has(category)) continue
++      if (!BEAM_QUESTION_TYPES[category]) {
++        logger.warn(`Unknown BEAM question category "${category}" in ${sampleId} - skipping`)
++        continue
++      }
++      if (!Array.isArray(categoryQuestions)) continue
++
++      for (let i = 0; i < categoryQuestions.length; i++) {
++        const qa = categoryQuestions[i]
++        if (!qa?.question) continue
++
++        const questionId = `${sampleId}-q${qIdx++}`
++        this.questions.push({
++          questionId,
++          question: qa.question,
++          questionType: category,
++          groundTruth: extractGroundTruth(qa),
++          haystackSessionIds: sessionIds,
++          metadata: {
++            sampleId,
++            tier: BEAM_TIER,
++            difficulty: qa.difficulty,
++            rubric: qa.rubric,
++          },
++        })
++        this.sessionsMap.set(questionId, sessions)
++      }
++    }
++  }
++
++  private extractSessions(sampleId: string, batches: BeamChat): UnifiedSession[] {
++    const sessions: UnifiedSession[] = []
++
++    for (const batch of batches) {
++      const messages: UnifiedMessage[] = []
++      for (const turnGroup of batch.turns || []) {
++        for (const msg of turnGroup) {
++          if (!msg?.content) continue
++          messages.push({
++            role: msg.role === "user" ? "user" : "assistant",
++            content: cleanContent(msg.content),
++          })
++        }
++      }
++      if (messages.length === 0) continue
++
++      const rawDate = batch.time_anchor || this.firstMessageAnchor(batch)
++      const parsedDate = rawDate ? parseBeamDate(rawDate) : null
++
++      sessions.push({
++        // `-session_<n>` (not `-batch<n>`) so conversationIdFromSessionId strips
++        // the suffix to the conversation id; the ingest actor_id then matches
++        // the search actor_id derived from the question id. See the question-id
++        // note above.
++        sessionId: `${sampleId}-session_${batch.batch_number}`,
++        messages,
++        metadata: {
++          date: parsedDate?.iso,
++          formattedDate: parsedDate?.formatted,
++        },
++      })
++    }
++
++    return sessions
++  }
++
++  private firstMessageAnchor(batch: BeamBatch): string | undefined {
++    for (const turnGroup of batch.turns || []) {
++      for (const msg of turnGroup) {
++        if (msg?.time_anchor) return msg.time_anchor
++      }
++    }
++    return undefined
++  }
++
++  getQuestions(filter?: QuestionFilter): UnifiedQuestion[] {
++    let result = [...this.questions]
++
++    if (filter?.questionTypes?.length) {
++      result = result.filter((q) => filter.questionTypes!.includes(q.questionType))
++    }
++
++    if (filter?.offset) {
++      result = result.slice(filter.offset)
++    }
++
++    if (filter?.limit) {
++      result = result.slice(0, filter.limit)
++    }
++
++    return result
++  }
++
++  getHaystackSessions(questionId: string): UnifiedSession[] {
++    return this.sessionsMap.get(questionId) || []
++  }
++
++  getGroundTruth(questionId: string): string {
++    const question = this.questions.find((q) => q.questionId === questionId)
++    return question?.groundTruth || ""
++  }
++
++  getQuestionTypes(): QuestionTypeRegistry {
++    return BEAM_QUESTION_TYPES
++  }
++}
++
++export default Beam100KBenchmark
+diff --git a/src/benchmarks/beam/types.ts b/src/benchmarks/beam/types.ts
+new file mode 100644
+index 0000000..71884ea
+--- /dev/null
++++ b/src/benchmarks/beam/types.ts
+@@ -0,0 +1,36 @@
++export interface BeamMessage {
++  role: "user" | "assistant"
++  id: number
++  content: string
++  time_anchor?: string
++  index?: string
++  question_type?: string
++}
++
++export interface BeamBatch {
++  batch_number: number
++  time_anchor?: string
++  turns: BeamMessage[][]
++}
++
++/** chat.json for 100K/500K/1M conversations: an array of batches */
++export type BeamChat = BeamBatch[]
++
++/**
++ * A probing question. The ground-truth field name varies by category:
++ * answer, ideal_answer, ideal_response, ideal_summary, or expected_compliance.
++ */
++export interface BeamProbingQuestion {
++  question: string
++  difficulty?: string
++  rubric?: string[]
++  answer?: string
++  ideal_answer?: string
++  ideal_response?: string
++  ideal_summary?: string
++  expected_compliance?: string
++  [key: string]: unknown
++}
++
++/** probing_questions.json: category name → questions */
++export type BeamProbingQuestions = Record<string, BeamProbingQuestion[]>
+diff --git a/src/benchmarks/index.ts b/src/benchmarks/index.ts
+index b790e87..c302884 100644
+--- a/src/benchmarks/index.ts
++++ b/src/benchmarks/index.ts
+@@ -2,11 +2,13 @@ import type { Benchmark, BenchmarkName } from "../types/benchmark"
+ import { LoCoMoBenchmark } from "./locomo"
+ import { LongMemEvalBenchmark } from "./longmemeval"
+ import { ConvoMemBenchmark } from "./convomem"
++import { Beam100KBenchmark } from "./beam"
+ 
+ const benchmarks: Record<BenchmarkName, new () => Benchmark> = {
+   locomo: LoCoMoBenchmark,
+   longmemeval: LongMemEvalBenchmark,
+   convomem: ConvoMemBenchmark,
++  beam100k: Beam100KBenchmark,
+ }
+ 
+ export function createBenchmark(name: BenchmarkName): Benchmark {
+@@ -21,4 +23,4 @@ export function getAvailableBenchmarks(): BenchmarkName[] {
+   return Object.keys(benchmarks) as BenchmarkName[]
+ }
+ 
+-export { LoCoMoBenchmark, LongMemEvalBenchmark, ConvoMemBenchmark }
++export { LoCoMoBenchmark, LongMemEvalBenchmark, ConvoMemBenchmark, Beam100KBenchmark }
+diff --git a/src/cli/index.ts b/src/cli/index.ts
+index b3c29d6..2c9b724 100644
+--- a/src/cli/index.ts
++++ b/src/cli/index.ts
+@@ -151,10 +151,17 @@ Available benchmark datasets for evaluation:
+                  Tests: user facts, assistant facts, preferences, implicit connections
+                  Source: HuggingFace Salesforce/ConvoMem (downloaded on first use)
+ 
++  beam100k       BEAM (100K tier) - Long-term memory in multi-session conversations
++                 Tests: contradiction resolution, event ordering, extraction,
++                        instruction/preference following, knowledge update,
++                        multi-session reasoning, summarization, temporal reasoning
++                 Source: GitHub mohammadtavakoli78/BEAM (downloaded on first use)
++
+ Usage:
+   -b locomo        Run LoCoMo benchmark
+   -b longmemeval   Run LongMemEval benchmark
+   -b convomem      Run ConvoMem benchmark
++  -b beam100k      Run BEAM 100K benchmark
+ `)
+ }
+ 
+diff --git a/src/server/routes/benchmarks.ts b/src/server/routes/benchmarks.ts
+index af0b377..3122ddf 100644
+--- a/src/server/routes/benchmarks.ts
++++ b/src/server/routes/benchmarks.ts
+@@ -51,6 +51,12 @@ export async function handleBenchmarksRoutes(req: Request, url: URL): Promise<Re
+         path: "./data/benchmarks/convomem/convomem_data.json",
+         displayName: "ConvoMem",
+       },
++      // BEAM ships as a per-conversation directory tree rather than one file;
++      // the last conversation's questions file standing in as the completion marker.
++      beam100k: {
++        path: "./data/benchmarks/beam/100K/20/probing_questions.json",
++        displayName: "BEAM-100K",
++      },
+     }
+ 
+     const activeRuns = getActiveRunsWithBenchmarks()
+@@ -163,6 +169,7 @@ function getBenchmarkDisplayName(name: string): string {
+     locomo: "LoCoMo",
+     longmemeval: "LongMemEval",
+     convomem: "ConvoMem",
++    beam100k: "BEAM-100K",
+   }
+   return names[name] || name
+ }
+@@ -173,6 +180,8 @@ function getBenchmarkDescription(name: string): string {
+     longmemeval:
+       "Long-term memory evaluation - Single/multi-session, temporal reasoning, knowledge update",
+     convomem: "Conversational memory - User facts, preferences, implicit connections",
++    beam100k:
++      "BEAM long-term memory - 20 conversations of ~100K tokens each, 9 memory abilities",
+   }
+   return descriptions[name] || ""
+ }
+diff --git a/src/types/benchmark.ts b/src/types/benchmark.ts
+index 07961e4..969aba5 100644
+--- a/src/types/benchmark.ts
++++ b/src/types/benchmark.ts
+@@ -20,4 +20,4 @@ export interface Benchmark {
+   getQuestionTypes(): QuestionTypeRegistry
+ }
+ 
+-export type BenchmarkName = "locomo" | "longmemeval" | "convomem"
++export type BenchmarkName = "locomo" | "longmemeval" | "convomem" | "beam100k"

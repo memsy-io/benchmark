@@ -1,0 +1,35 @@
+diff --git a/src/benchmarks/locomo/index.ts b/src/benchmarks/locomo/index.ts
+index 7b8c86c..b69bdb7 100644
+--- a/src/benchmarks/locomo/index.ts
++++ b/src/benchmarks/locomo/index.ts
+@@ -59,19 +59,16 @@ export const LOCOMO_QUESTION_TYPES: QuestionTypeRegistry = {
+     alias: "world",
+     description: "Commonsense/world knowledge",
+   },
+-  adversarial: {
+-    id: "adversarial",
+-    alias: "adversarial",
+-    description: "Adversarial (unanswerable)",
+-  },
+ }
+ 
++// Category 5 (adversarial/unanswerable) is intentionally excluded from the benchmark.
++const EXCLUDED_CATEGORIES = new Set([5])
++
+ const CATEGORY_TO_TYPE: Record<number, string> = {
+   1: "single-hop",
+   2: "multi-hop",
+   3: "temporal",
+   4: "world-knowledge",
+-  5: "adversarial",
+ }
+ 
+ export class LoCoMoBenchmark implements Benchmark {
+@@ -119,6 +116,7 @@ export class LoCoMoBenchmark implements Benchmark {
+ 
+       for (let i = 0; i < item.qa.length; i++) {
+         const qa = item.qa[i]
++        if (EXCLUDED_CATEGORIES.has(qa.category)) continue
+         const questionId = `${item.sample_id}-q${i}`
+ 
+         const questionType = CATEGORY_TO_TYPE[qa.category]
