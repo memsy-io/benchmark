@@ -254,7 +254,7 @@ export class MemsyProvider implements Provider {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer msy_608e36c6e2650401c4c18467534b035d",
+          Authorization: "Bearer <key>",
         },
         body: JSON.stringify(requestBody),
       })
@@ -294,7 +294,7 @@ export class MemsyProvider implements Provider {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Bearer msy_608e36c6e2650401c4c18467534b035d",
+          Authorization: "Bearer <key>",
         },
         body: JSON.stringify({
           event_ids: result.documentIds,
@@ -336,7 +336,7 @@ export class MemsyProvider implements Provider {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer msy_608e36c6e2650401c4c18467534b035d",
+        Authorization: "Bearer <key>",
       },
       body: JSON.stringify({
         query,
