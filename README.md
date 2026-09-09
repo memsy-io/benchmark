@@ -10,6 +10,7 @@ Evaluated on the full **LoCoMo** dataset (1,540 questions). Judge and answerer: 
 
 | Run | k | Accuracy | Hit@10 | MRR |
 |-----|--:|--------:|-------:|----:|
+| [py2k](results/history/memsy-locomo-20260909-py2k/report.json) | 10 | 90.19% | 95.52% | 0.8937 |
 | [cdyi](results/history/memsy-locomo-20260408-cdyi/report.json) | 10 | 88.90% | 95.97% | 0.9089 |
 | [2n68](results/history/memsy-locomo-20260428-2n68/report.json) | 20 | 88.83% | — | — |
 | [rik3](results/history/memsy-locomo-20260505-rik3/report.json) | 20 | 88.12% | — | — |
