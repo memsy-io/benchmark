@@ -17,7 +17,9 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 `2n68` reused `mzao`'s ingestion (`dataSourceRunId: memsy-locomo-20260428-mzao`). `rik3` reused `1ksp`'s ingestion (`dataSourceRunId: memsy-locomo-20260505-1ksp`). `9984` reused `ho8o`'s ingestion (`dataSourceRunId: memsy-locomo-20260626-ho8o`). Hit@10 / MRR / nDCG are omitted for all k>10 runs; see the per-k retrieval tables below. `ho8o` ran over 1539 questions (one question skipped during ingest). `py2k` is a fresh ingest (`dataSourceRunId` is self).
 
-> **Metric caveat:** in these reports `recallAtK` is byte-identical to `hitAtK` at every level (overall and per question type), so the "Recall@K" columns below are really hit-rate — the fraction of questions with *at least one* gold memory in the top k, not the fraction of gold memories retrieved. Read them as an upper bound on true recall.
+> **Metric caveat — `Recall@K` is hit-rate, and true recall is not recoverable.** `recallAtK` is byte-identical to `hitAtK` at every level in every report. The reason is that the harness never records a partial retrieval: across 4,620 questions (py2k, cdyi, 9984), `relevantRetrieved` is *always* either `0` or exactly `totalRelevant` — not once in between. With gold sets averaging 3.4 memories at k=10, all-or-nothing retrieval 100% of the time is not plausible real behavior, so `relevantRetrieved` is very likely derived from the hit flag rather than counted. Read the `Recall@K` columns as hit-rate; true recall cannot be computed from these artifacts, including from the raw counts.
+>
+> **`Precision@K` is at its structural ceiling, not underperforming.** Gold sets average 3.40 memories (min 1, max 10), so at k=10 the maximum achievable precision is ≈0.340. py2k reports 0.336. The low-looking value is a property of gold-set size versus k, not of retrieval quality.
 
 ## Accuracy by question type
 
@@ -25,12 +27,12 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 | --- | ---: | ---: | ---: | ---: |
 | cdyi (k=10) | 85.05% (273) | 73.96% (71) | 86.52% (244) | 92.87% (781) |
 | mzao (k=10) | 83.18% (267) | 72.92% (70) | 87.59% (247) | 90.25% (759) |
+| py2k (k=10) | 88.47% (284) | 76.04% (73) | 90.07% (254) | 92.51% (778) |
 | 2n68 (k=20) | 81.62% (262) | **79.17% (76)** | **89.72% (253)** | 92.39% (777) |
 | 1ksp (k=20) | 83.49% (268) | 73.96% (71) | 87.94% (248) | 90.84% (764) |
 | rik3 (k=20) | 84.11% (270) | 76.04% (73) | 86.88% (245) | **91.44% (769)** |
 | ho8o (k=20) | 89.38% (286) | 72.92% (70) | 88.30% (249) | 90.61% (762) |
 | 9984 (k=25) | **90.34% (290)** | 75.00% (72) | **91.84% (259)** | **92.51% (778)** |
-| py2k (k=10) | 88.47% (284) | 76.04% (73) | 90.07% (254) | 92.51% (778) |
 
 ## Retrieval quality by question type (k=10 runs — Recall@10 / Hit@10)
 
@@ -124,7 +126,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ## Observations
 
-- **Best accuracy:** `9984` (k=25) at 90.84% (1399/1540); `py2k` (k=10) is second at 90.19% (1389/1540) for 39% of the context tokens. Among k=10 runs, `py2k` leads `cdyi` (88.90%) by +1.29 pts.
+- **Highest accuracy:** `9984` (k=25) at 90.84% (1399/1540); `py2k` (k=10) is next at 90.19% (1389/1540) on 942 context tokens. Among k=10 runs `py2k` leads `cdyi` (88.90%) by +1.29 pts, though that lead is not statistically significant (see the McNemar note below).
 - **Temporal swing:** `2n68` jumped temporal accuracy to 79.17% (+6.25 pts vs `mzao`, same ingest) — the largest per-category move across all three runs. Likely driven by the wider candidate pool surfacing date-bearing memories that fall outside the top 10.
 - **mzao → 2n68 (same ingest, k=10 → k=20):** +1.62 pts overall (1343 → 1368). Multi-hop dropped (−1.56) while temporal (+6.25) and single-hop (+2.13) gained. Net positive on the same memory store.
 - **Retrieval ceiling on k=10 runs:** Hit@10 sits at 94.94–95.97%; failure modes concentrate in answer-generation, not retrieval.
@@ -134,8 +136,17 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 - **ho8o (k=20, fresh ingest):** 88.82% (1367/1539) — consistent with prior k=20 runs. Serves as the ingest source for `9984`. One question was skipped during ingest (1539 vs 1540 total).
 - **9984 (k=25, reuses ho8o ingest):** **90.84% (1399/1540) — new all-time best**, up +1.94 pts from cdyi (previous best at 88.90%). All gain comes from widening k from 20 to 25 on the same memory store. Multi-hop improved most (+0.96 vs ho8o), single-hop gained +3.54 pts, and world-knowledge jumped +1.90 pts. Temporal remains the ceiling — only +2.08 pts (72.92% → 75.00%).
 - **k=20 → k=25 (same ingest, ho8o → 9984):** +2.02 pts overall. Retrieval Recall@k rose from 95.06% to 96.36%, and MRR improved from 0.887 to 0.896 — the wider candidate pool delivers meaningfully more accurate answers across all question types.
-- **py2k (k=10, fresh ingest): 90.19% (1389/1540) — best k=10 run to date**, +1.29 pts over `cdyi`, and within 0.65 pts of the all-time best `9984` (k=25) while using 942 context tokens vs 2412 and a median total latency of 10.3s vs 31.5s. Retrieval is slightly *worse* than `cdyi` (Hit@10 95.52% vs 95.97%, MRR 0.894 vs 0.909), so the gain is answer-side, not retrieval-side.
-- **Efficiency frontier:** `py2k` breaks the "wider k buys accuracy" pattern — 90.19% at 942 ctx tok beats 88.83% at 1597 tok (`2n68`, k=20) and 87.73% at 1764 tok (`1ksp`, k=20). Best accuracy-per-context-token of any run here.
+- **py2k (k=10, fresh ingest): 90.19% (1389/1540)** — the highest k=10 point estimate recorded, but see the significance note below before treating it as "best". Retrieval is slightly *worse* than `cdyi` (Hit@10 95.52% vs 95.97%, MRR 0.894 vs 0.909), so the gain is answer-side, not retrieval-side.
+- **Significance (paired McNemar over the same 1540 questions):** reports carry per-question `questionId` and a binary `score`, so runs can be compared pair-wise rather than by point estimate alone.
+
+  | Comparison | Discordant pairs | Exact two-sided p | Verdict |
+  | --- | --- | ---: | --- |
+  | py2k vs `cdyi` | 94 / 74 | 0.142 | **not significant** |
+  | py2k vs `mzao` | 114 / 68 | 0.0008 | significant |
+  | `cdyi` vs `mzao` | 84 / 58 | 0.036 | significant |
+
+  95% Wilson CIs overlap heavily: `cdyi` [87.23%, 90.37%], py2k [88.61%, 91.58%]. **py2k's +1.29 pts over `cdyi` is not statistically distinguishable from run-to-run variance.** A second run at the py2k config is needed before claiming a new best. Note `cdyi` vs `mzao` *is* significant — config-level variation between k=10 runs is real and has historically exceeded the gain published here.
+- **Efficiency at constant context cost (the defensible claim):** `mzao` already ran at 966 avg context tokens in April, so py2k's 942 is not a new reduction. What is new is the accuracy at that budget: **87.21% → 90.19% (+2.98 pts, p = 0.0008) at ~950 context tokens.** Holding cost constant, this is both significant and free of the variance objection above. For reference, py2k also beats 88.83% at 1597 tok (`2n68`, k=20) and 87.73% at 1764 tok (`1ksp`, k=20).
 - **Temporal on py2k:** best temporal of any k=10 run (76.04%) *despite* the worst temporal Hit@10 (80.21% vs 84.38% for `cdyi`) and the worst temporal MRR (0.726). Temporal remains the weakest category in every run regardless of k.
 
 ## How to add a run
