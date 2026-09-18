@@ -19,7 +19,7 @@ Evaluated on the full **LoCoMo** dataset (1,540 questions). Judge and answerer: 
 
 Full breakdown by question type, retrieval quality, and latency: [results/BENCHMARK_RESULTS.md](results/BENCHMARK_RESULTS.md).
 
-**Reference:** mem0 scores 82.7% at k=50 on the same dataset. Memsy beats that in all runs at k≤25.
+**Reference (mem0):** 90.19% with GPT-4.1 mini and 10 memories, vs mem0's 91.56% with GPT-5 and 200. mem0's score, models, and retrieval depth are from [their own published results](https://github.com/mem0ai/memory-benchmarks/blob/4b61c5d/results/platform/locomo_results.json) (1410/1540 = 91.56%, GPT-5 as answerer and judge, `top_200`, pinned to commit `4b61c5d`). Both sides of that comparison come from a committed artifact. See [results/BENCHMARK_RESULTS.md](results/BENCHMARK_RESULTS.md) for the sourcing notes and caveats.
 
 ## Quick start
 

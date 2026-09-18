@@ -19,7 +19,19 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 > **Metric caveat — `Recall@K` is hit-rate, and true recall is not recoverable.** `recallAtK` is byte-identical to `hitAtK` at every level in every report. The reason is that the harness never records a partial retrieval: across 4,620 questions (py2k, cdyi, 9984), `relevantRetrieved` is *always* either `0` or exactly `totalRelevant` — not once in between. With gold sets averaging 3.4 memories at k=10, all-or-nothing retrieval 100% of the time is not plausible real behavior, so `relevantRetrieved` is very likely derived from the hit flag rather than counted. Read the `Recall@K` columns as hit-rate; true recall cannot be computed from these artifacts, including from the raw counts.
 >
-> **`Precision@K` is at its structural ceiling, not underperforming.** Gold sets average 3.40 memories (min 1, max 10), so at k=10 the maximum achievable precision is ≈0.340. py2k reports 0.336. The low-looking value is a property of gold-set size versus k, not of retrieval quality.
+> **`Precision@K` is at its structural ceiling, not underperforming.** Gold sets average 3.40 memories (min 1, max 10), so at k=10 the maximum achievable precision is ≈0.340. py2k reports 0.336. The low-looking value is a property of gold-set size versus k, not of retrieval quality. Note this ceiling is **run-specific**, because the gold-set size itself is not stable — see below.
+>
+> **Gold-set sizes are not stable across runs, so no retrieval metric is comparable between runs.** A gold set is a property of the LoCoMo dataset and should be identical for a given question in every run. It is not. Over the same 1540 `questionId`s:
+>
+> | Run | mean `totalRelevant` | `Precision@K` | ceiling (mean/k) |
+> | --- | ---: | ---: | ---: |
+> | py2k | 3.40 | 0.336 | 0.340 |
+> | mzao | 3.92 | 0.387 | 0.392 |
+> | cdyi | 4.06 | 0.402 | 0.406 |
+>
+> **1345 of 1540 questions (87.3%) have a different gold-set size in different runs** — only 195 agree across all three. For example `conv-26-q1` is 1 in py2k, 4 in cdyi, 3 in mzao. That the gold set moves per run means it is being derived from what the system ingested or returned rather than from fixed annotations — the same mechanism as `relevantRetrieved` above, one level up.
+>
+> Consequences: **`Precision@K`, `Recall@K`, `F1@K` and `nDCG` are not comparable across runs**, and each run's precision tracks its own gold-set size almost exactly (see the ceiling column), so most of any cross-run precision gap is denominator, not retrieval quality. **Accuracy is unaffected** — it is judge-scored per question and independent of gold sets — and so is every McNemar result below, since those pair on `score` only.
 
 ## Accuracy by question type
 
@@ -132,11 +144,24 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 - **Retrieval ceiling on k=10 runs:** Hit@10 sits at 94.94–95.97%; failure modes concentrate in answer-generation, not retrieval.
 - **1ksp:** Fresh ingest run at k=20 (`dataSourceRunId` is self). Retrieval Recall@20 = 96.56%, MRR = 0.907, NDCG = 0.893. Serves as the ingest source for `rik3`.
 - **rik3:** Reuses `1ksp` ingest; only retrieval, answering, and evaluation re-run. Retrieval Recall@20 = 96.43%, MRR = 0.909, NDCG = 0.894. Accuracy +0.39 pts vs `1ksp` on the same memory store (1351 → 1357 correct).
-- **Reference (mem0, k=50):** 82.7% overall, 86.3% temporal. Memsy beats mem0 on overall accuracy in all runs while operating at k≤25.
+- **Reference (mem0) — artifact-backed on both sides:** **90.19% with GPT-4.1 mini and 10 memories, vs mem0's 91.56% with GPT-5 and 200.** mem0's figures come from their own committed artifact at [`mem0ai/memory-benchmarks@4b61c5d`](https://github.com/mem0ai/memory-benchmarks/blob/4b61c5d/results/platform/locomo_results.json), `results/platform/locomo_results.json`:
+
+  | Cell | Source |
+  | --- | --- |
+  | 91.56% (1410/1540) | `metrics_by_cutoff.top_200` |
+  | GPT-5 | `metadata.answerer_model` / `metadata.judge_model` |
+  | 200 retrieved | `metadata.top_k_cutoffs: ["top_200"]`, constant across all 1540 questions |
+  | ~7,000 tokens | ⚠️ **blog only** — no token or context field exists anywhere in the artifact |
+
+  Their README advertises 92.5% (1425/1540), which does **not** reproduce from that artifact — a 15-question gap — and its breakdown is labelled "avg across top_10/20/50/200" though the run only evaluated `top_200`. We cite 91.56% because it is the figure they can show their work for. Their `metadata.merged_from_questions` also lists 156 of 1540 questions (10%) carried over from a prior run.
+
+  **The ~7,000 figure must not be used as a denominator in any ratio claim.** It appears only in [their blog post](https://mem0.ai/blog/mem0-the-token-efficient-memory-algorithm) ("Mean tokens: 6,956", per retrieval call), and we cannot establish whether it counts context only or the whole prompt. Our 942 is a measured `avgContextTokens`; theirs is a published claim. The two are not directly comparable.
+
+  mem0's earlier published figure of 82.7% at k=50 is superseded by the above for comparison purposes.
 - **ho8o (k=20, fresh ingest):** 88.82% (1367/1539) — consistent with prior k=20 runs. Serves as the ingest source for `9984`. One question was skipped during ingest (1539 vs 1540 total).
 - **9984 (k=25, reuses ho8o ingest):** **90.84% (1399/1540) — new all-time best**, up +1.94 pts from cdyi (previous best at 88.90%). All gain comes from widening k from 20 to 25 on the same memory store. Multi-hop improved most (+0.96 vs ho8o), single-hop gained +3.54 pts, and world-knowledge jumped +1.90 pts. Temporal remains the ceiling — only +2.08 pts (72.92% → 75.00%).
 - **k=20 → k=25 (same ingest, ho8o → 9984):** +2.02 pts overall. Retrieval Recall@k rose from 95.06% to 96.36%, and MRR improved from 0.887 to 0.896 — the wider candidate pool delivers meaningfully more accurate answers across all question types.
-- **py2k (k=10, fresh ingest): 90.19% (1389/1540)** — the highest k=10 point estimate recorded, but see the significance note below before treating it as "best". Retrieval is slightly *worse* than `cdyi` (Hit@10 95.52% vs 95.97%, MRR 0.894 vs 0.909), so the gain is answer-side, not retrieval-side.
+- **py2k (k=10, fresh ingest): 90.19% (1389/1540)** — the highest k=10 point estimate recorded, but see the significance note below before treating it as "best". py2k's retrieval figures read slightly lower than `cdyi`'s (Hit@10 95.52% vs 95.97%, MRR 0.894 vs 0.909), but those are computed against different gold sets (see the gold-set caveat above), so the two are not comparable and **no conclusion about where the accuracy gain originates can be drawn from them.** The gain may well be answer-side; these numbers are not the evidence for it.
 - **Significance (paired McNemar over the same 1540 questions):** reports carry per-question `questionId` and a binary `score`, so runs can be compared pair-wise rather than by point estimate alone.
 
   | Comparison | Discordant pairs | Exact two-sided p | Verdict |
