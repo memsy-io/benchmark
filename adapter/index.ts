@@ -210,15 +210,48 @@ export class MemsyProvider implements Provider {
   private apiKey: string = "";
   /** Event IDs we've already sent this run; skip them on subsequent ingest calls. */
   private sentEventIds = new Set<string>();
+  /** Run graph conflict-detection once per conversation after indexing (A/B flag). */
+  private detectConflicts = false;
+  /** Conversations already conflict-detected this run (once per conversation). */
+  private conflictsRun = new Set<string>();
+  /** Attach raw source-event transcripts to search results. Off = lean context
+   * (memory text only) → far fewer tokens. Set MEMSY_BENCH_SOURCE_EVENTS=false. */
+  private sourceEvents = true;
+  /** Arm 3 (never-flip): ask the API to attach each survivor's superseded
+   * predecessors as read-time annotations instead of silently hiding them.
+   * Presupposes arm 2 — annotations only exist where supersedes edges do — so
+   * it is only meaningful with MEMSY_BENCH_DETECT_CONFLICTS=true. Purely
+   * additive at read time: never changes WHICH memories come back, only what
+   * the answer prompt is told about them. Set
+   * MEMSY_BENCH_SUPERSEDED_ANNOTATIONS=true. */
+  private supersededAnnotations = false;
 
   async initialize(config: ProviderConfig): Promise<void> {
     this.baseUrl =
       config.baseUrl || process.env.MEMSY_API_URL || "https://api.memsy.io/v1";
     this.apiKey = config.apiKey || process.env.MEMSY_API_KEY || "";
+    this.detectConflicts = process.env.MEMSY_BENCH_DETECT_CONFLICTS === "true";
+    this.sourceEvents = process.env.MEMSY_BENCH_SOURCE_EVENTS !== "false";
+    this.supersededAnnotations =
+      process.env.MEMSY_BENCH_SUPERSEDED_ANNOTATIONS === "true";
 
     if (!this.apiKey) {
       throw new Error(
         "Memsy provider requires an API key. Set MEMSY_API_KEY in your environment or .env file.",
+      );
+    }
+
+    // Log the PARSED values, not the raw env. A silently-unread flag is the
+    // failure mode that makes an arm look like a null result rather than a
+    // misconfiguration.
+    logger.info(
+      `Memsy arm config: detectConflicts=${this.detectConflicts} ` +
+        `sourceEvents=${this.sourceEvents} supersededAnnotations=${this.supersededAnnotations}`,
+    );
+    if (this.supersededAnnotations && !this.detectConflicts) {
+      logger.warn(
+        "MEMSY_BENCH_SUPERSEDED_ANNOTATIONS=true but MEMSY_BENCH_DETECT_CONFLICTS is not true — " +
+          "no supersedes edges will exist, so arm 3 will be indistinguishable from arm 1.",
       );
     }
 
@@ -234,6 +267,49 @@ export class MemsyProvider implements Provider {
       throw new Error(
         `Failed to connect to Memsy API at ${this.baseUrl}: ${e}`,
       );
+    }
+  }
+
+  /**
+   * Produce supersedes/contradicts/related graph edges for a conversation and
+   * mark the older memory of each supersedes pair `superseded` (retrieval then
+   * excludes it, since arm 3's annotation flag defaults to false). Runs once
+   * per conversation, best-effort — a failure never fails the benchmark.
+   * Gated by MEMSY_BENCH_DETECT_CONFLICTS=true so runs can be A/B compared.
+   * `/detect-conflicts` runs the on-demand ActorCandidateSource path (exhaustive
+   * band pairs for one actor), not the scheduled worker's below-band entity
+   * source — so this measures band-source conflicts specifically.
+   */
+  private async runConflictDetection(containerTag: string): Promise<void> {
+    if (!this.detectConflicts) return;
+    const convId = conversationIdFromContainerTag(containerTag);
+    if (this.conflictsRun.has(convId)) return;
+    this.conflictsRun.add(convId);
+    try {
+      const res = await fetch(`${this.baseUrl}/detect-conflicts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({ actor_id: convId }),
+      });
+      if (!res.ok) {
+        logger.warn(`detect-conflicts failed for ${convId}: ${res.status}`);
+        return;
+      }
+      const d = (await res.json()) as {
+        supersedes: number;
+        contradicts: number;
+        opinion: number;
+        superseded_marked: number;
+      };
+      logger.info(
+        `detect-conflicts ${convId}: supersedes=${d.supersedes} contradicts=${d.contradicts} ` +
+          `opinion=${d.opinion} superseded=${d.superseded_marked}`,
+      );
+    } catch (e) {
+      logger.warn(`detect-conflicts error for ${convId}: ${e}`);
     }
   }
 
@@ -290,6 +366,58 @@ export class MemsyProvider implements Provider {
     return { documentIds: data.event_ids };
   }
 
+  // The API caps /status's event_ids at 500 (StatusRequest.event_ids,
+  // max_length=500). A single conversation's haystack can exceed that on its
+  // own — 5 of LoCoMo's 10 conversations run 600-690 messages — so one
+  // ingest() call's documentIds routinely overflows a single /status POST.
+  // Sending them all in one request 422s deterministically, every time, for
+  // any conversation over the cap; it isn't a transient/rate-limit failure
+  // the retry-with-backoff loop below can recover from.
+  private readonly STATUS_CHUNK_SIZE = 500;
+
+  private async _statusCheck(
+    documentIds: string[],
+    containerTag: string,
+  ): Promise<MemsyStatusResponse | null> {
+    const chunks: string[][] = [];
+    for (let i = 0; i < documentIds.length; i += this.STATUS_CHUNK_SIZE) {
+      chunks.push(documentIds.slice(i, i + this.STATUS_CHUNK_SIZE));
+    }
+
+    const merged: MemsyStatusResponse = {
+      completedIds: [],
+      failedIds: [],
+      pendingIds: [],
+      total: documentIds.length,
+    }
+
+    for (const chunk of chunks) {
+      const response = await fetch(`${this.baseUrl}/status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          event_ids: chunk,
+          containerTag,
+        }),
+      })
+
+      if (!response.ok) {
+        logger.warn(`Status check failed: ${response.status}`)
+        return null
+      }
+
+      const status = (await response.json()) as MemsyStatusResponse
+      merged.completedIds.push(...status.completedIds)
+      merged.failedIds.push(...status.failedIds)
+      merged.pendingIds.push(...status.pendingIds)
+    }
+
+    return merged
+  }
+
   async awaitIndexing(
     result: IngestResult,
     containerTag: string,
@@ -306,26 +434,13 @@ export class MemsyProvider implements Provider {
     onProgress?.({ completedIds: [], failedIds: [], total });
 
     while (true) {
-      const response = await fetch(`${this.baseUrl}/status`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          event_ids: result.documentIds,
-          containerTag,
-        }),
-      });
+      const status = await this._statusCheck(result.documentIds, containerTag)
 
-      if (!response.ok) {
-        logger.warn(`Status check failed: ${response.status}`);
+      if (status === null) {
         await new Promise((r) => setTimeout(r, backoffMs));
         backoffMs = Math.min(backoffMs * 1.5, 10000);
         continue;
       }
-
-      const status = (await response.json()) as MemsyStatusResponse;
 
       onProgress?.({
         completedIds: status.completedIds,
@@ -337,6 +452,7 @@ export class MemsyProvider implements Provider {
         if (status.failedIds.length > 0) {
           logger.warn(`${status.failedIds.length} documents failed indexing`);
         }
+        await this.runConflictDetection(containerTag);
         return;
       }
 
@@ -359,7 +475,8 @@ export class MemsyProvider implements Provider {
         actor_id: convId,
         limit: options.limit ?? 10,
         threshold: options.threshold || 0.3,
-        include_source_events: true,
+        include_source_events: this.sourceEvents,
+        include_superseded_annotations: this.supersededAnnotations,
       }),
     });
 
