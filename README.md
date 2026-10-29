@@ -10,16 +10,17 @@ Evaluated on the full **LoCoMo** dataset (1,540 questions). Judge and answerer: 
 
 | Run | k | Accuracy | Hit@10 | MRR |
 |-----|--:|--------:|-------:|----:|
+| [em0q](results/history/memsy-locomo-20261028-em0q/report.json) | 10 | **91.10%** | 96.04% | 0.9028 |
 | [py2k](results/history/memsy-locomo-20260909-py2k/report.json) | 10 | 90.19% | 95.52% | 0.8937 |
 | [cdyi](results/history/memsy-locomo-20260408-cdyi/report.json) | 10 | 88.90% | 95.97% | 0.9089 |
 | [2n68](results/history/memsy-locomo-20260428-2n68/report.json) | 20 | 88.83% | — | — |
 | [rik3](results/history/memsy-locomo-20260505-rik3/report.json) | 20 | 88.12% | — | — |
 | [ho8o](results/history/memsy-locomo-20260626-ho8o/report.json) | 20 | 88.82% | — | — |
-| [9984](results/history/memsy-locomo-20260627-9984/report.json) | 25 | **90.84%** | — | — |
+| [9984](results/history/memsy-locomo-20260627-9984/report.json) | 25 | 90.84% | — | — |
 
 Full breakdown by question type, retrieval quality, and latency: [results/BENCHMARK_RESULTS.md](results/BENCHMARK_RESULTS.md).
 
-**Reference (mem0):** 90.19% with GPT-4.1 mini and 10 memories, vs mem0's 91.56% with GPT-5 and 200. mem0's score, models, and retrieval depth are from [their own published results](https://github.com/mem0ai/memory-benchmarks/blob/4b61c5d/results/platform/locomo_results.json) (1410/1540 = 91.56%, GPT-5 as answerer and judge, `top_200`, pinned to commit `4b61c5d`). Both sides of that comparison come from a committed artifact. See [results/BENCHMARK_RESULTS.md](results/BENCHMARK_RESULTS.md) for the sourcing notes and caveats.
+**Reference (mem0):** 91.10% with GPT-4.1 mini and 10 memories, vs mem0's 91.56% with GPT-5 and 200. mem0's score, models, and retrieval depth are from [their own published results](https://github.com/mem0ai/memory-benchmarks/blob/4b61c5d/results/platform/locomo_results.json) (1410/1540 = 91.56%, GPT-5 as answerer and judge, `top_200`, pinned to commit `4b61c5d`). Both sides of that comparison come from a committed artifact. See [results/BENCHMARK_RESULTS.md](results/BENCHMARK_RESULTS.md) for the sourcing notes and caveats.
 
 ## Quick start
 
