@@ -22,6 +22,8 @@
  */
 
 import { createHash } from "crypto";
+import { existsSync, readFileSync } from "fs";
+import { join } from "path";
 import type {
   Provider,
   ProviderConfig,
@@ -128,6 +130,62 @@ function conversationIdFromContainerTag(containerTag: string): string {
   return containerTag.replace(/-q\d+.*$/, "") || containerTag;
 }
 
+type ImageEntry = { blip_caption: string; speaker: string } | null;
+
+// Same path the LoCoMo loader reads (benchmarks/locomo/index.ts DEFAULT_DATA_PATH).
+const LOCOMO_DATA_PATH =
+  process.env.LOCOMO_DATA_PATH || "./data/benchmarks/locomo/locomo10.json";
+
+let locomoImagesCache: Map<string, ImageEntry[]> | null = null;
+
+/**
+ * Image captions per LoCoMo session, keyed by sessionId ("<sample_id>-session_<N>")
+ * and aligned by index with the session's messages.
+ *
+ * The LoCoMo loader maps each turn to {role, content, speaker} and drops
+ * `blip_caption`, so sessions arrive without `metadata.message_images` and
+ * every image detail ("a painting of a sunset with a palm tree") is lost before
+ * ingest. Read the captions from the dataset file the loader already downloaded.
+ * The loader keeps message order 1:1, so turn N here is message N there.
+ *
+ * Empty map when the file is absent (non-LoCoMo runs) — lookups then miss and
+ * ingest is unchanged.
+ */
+function locomoImagesBySession(): Map<string, ImageEntry[]> {
+  if (locomoImagesCache) return locomoImagesCache;
+  locomoImagesCache = new Map();
+  const fullPath = join(process.cwd(), LOCOMO_DATA_PATH);
+  if (!existsSync(fullPath)) return locomoImagesCache;
+
+  try {
+    const items = JSON.parse(readFileSync(fullPath, "utf8")) as Array<{
+      sample_id: string;
+      conversation: Record<string, unknown>;
+    }>;
+    for (const item of items) {
+      for (const [key, turns] of Object.entries(item.conversation)) {
+        if (!/^session_\d+$/.test(key) || !Array.isArray(turns)) continue;
+        const images = (
+          turns as Array<{ speaker: string; blip_caption?: string }>
+        ).map((t) =>
+          t.blip_caption
+            ? { blip_caption: t.blip_caption, speaker: t.speaker }
+            : null,
+        );
+        if (images.some((i) => i !== null)) {
+          locomoImagesCache.set(`${item.sample_id}-${key}`, images);
+        }
+      }
+    }
+    logger.info(
+      `Loaded LoCoMo image captions for ${locomoImagesCache.size} sessions`,
+    );
+  } catch (e) {
+    logger.warn(`Could not read LoCoMo image captions from ${fullPath}: ${e}`);
+  }
+  return locomoImagesCache;
+}
+
 /**
  * Translate a UnifiedSession into one MemsyEventPayload PER MESSAGE.
  *
@@ -151,9 +209,10 @@ function sessionToMessages(
   const sessionId = session.sessionId ?? "";
   const convId = conversationIdFromSessionId(sessionId);
 
-  type ImageEntry = { blip_caption: string; speaker: string } | null;
   const messageImages =
-    (session.metadata?.message_images as ImageEntry[] | undefined) ?? [];
+    (session.metadata?.message_images as ImageEntry[] | undefined) ??
+    locomoImagesBySession().get(sessionId) ??
+    [];
 
   const meta: Record<string, string> = {};
   if (session.metadata?.speakerA)
