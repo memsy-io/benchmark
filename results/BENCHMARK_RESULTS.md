@@ -2,6 +2,17 @@
 
 Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. Judge and answerer both `gpt-4.1-mini`. `k` differs per run (see table).
 
+> **Category labels corrected on 2026-11-23.** Every run below came from a memorybench clone that labelled LoCoMo's categories 1–4 one place off. The tables here use the correct names; each raw `report.json` keeps the label it was written with:
+>
+> | LoCoMo category | Questions | Label in `report.json` | Correct label |
+> | ---: | ---: | --- | --- |
+> | 1 | 282 | `single-hop` | multi-hop |
+> | 2 | 321 | `multi-hop` | temporal |
+> | 3 | 96 | `temporal` | open-domain |
+> | 4 | 841 | `world-knowledge` | single-hop |
+>
+> Only names changed, not scores. Memsy's adapter sends every question to the same judge prompt whatever its label, and the sampling groups are the same questions under either name. Before this correction, the weakest category was reported as temporal; it is open-domain, the 96 questions that need commonsense or world knowledge.
+
 ## Headline numbers
 
 | Run | Date (UTC) | k | Accuracy | Correct | Hit@10 | MRR | nDCG | MemScore | Avg ctx tok |
@@ -37,7 +48,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ## Accuracy by question type
 
-| Run | multi-hop (321) | temporal (96) | single-hop (282) | world-knowledge (841) |
+| Run | temporal (321) | open-domain (96) | multi-hop (282) | single-hop (841) |
 | --- | ---: | ---: | ---: | ---: |
 | cdyi (k=10) | 85.05% (273) | 73.96% (71) | 86.52% (244) | 92.87% (781) |
 | mzao (k=10) | 83.18% (267) | 72.92% (70) | 87.59% (247) | 90.25% (759) |
@@ -51,7 +62,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ## Retrieval quality by question type (k=10 runs — Recall@10 / Hit@10)
 
-| Run | multi-hop | temporal | single-hop | world-knowledge |
+| Run | temporal | open-domain | multi-hop | single-hop |
 | --- | ---: | ---: | ---: | ---: |
 | cdyi | 95.95% | 84.38% | 97.52% | 96.79% |
 | mzao | 95.02% | 82.29% | 98.94% | 95.01% |
@@ -60,7 +71,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ### py2k (full detail)
 
-| Metric | multi-hop | temporal | single-hop | world-knowledge | overall |
+| Metric | temporal | open-domain | multi-hop | single-hop | overall |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Recall@10 | 95.33% | 80.21% | 98.23% | 96.43% | 95.52% |
 | Precision@10 | 24.36% | 40.97% | 51.03% | 30.42% | 33.59% |
@@ -70,7 +81,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ### em0q (full detail)
 
-| Metric | multi-hop | temporal | single-hop | world-knowledge | overall |
+| Metric | temporal | open-domain | multi-hop | single-hop | overall |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Recall@10 | 96.57% | 83.33% | 97.16% | 96.91% | 96.04% |
 | Precision@10 | 25.67% | 44.38% | 51.28% | 31.60% | 34.76% |
@@ -84,7 +95,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ### 1ksp
 
-| Metric | multi-hop | temporal | single-hop | world-knowledge | overall |
+| Metric | temporal | open-domain | multi-hop | single-hop | overall |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Recall@20 | 95.64% | 90.62% | 98.94% | 96.79% | 96.56% |
 | Precision@20 | 15.44% | 35.68% | 45.48% | 22.35% | 25.98% |
@@ -94,7 +105,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ### rik3
 
-| Metric | multi-hop | temporal | single-hop | world-knowledge | overall |
+| Metric | temporal | open-domain | multi-hop | single-hop | overall |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Recall@20 | 95.95% | 89.58% | 98.94% | 96.55% | 96.43% |
 | Precision@20 | 15.62% | 35.83% | 47.23% | 22.51% | 26.43% |
@@ -104,7 +115,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ### ho8o
 
-| Metric | multi-hop | temporal | single-hop | world-knowledge | overall |
+| Metric | temporal | open-domain | multi-hop | single-hop | overall |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Recall@20 | 95.94% | 87.50% | 97.16% | 94.89% | 95.06% |
 | Precision@20 | 15.41% | 29.96% | 28.49% | 17.04% | 19.61% |
@@ -116,7 +127,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
 ### 9984
 
-| Metric | multi-hop | temporal | single-hop | world-knowledge | overall |
+| Metric | temporal | open-domain | multi-hop | single-hop | overall |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Recall@25 | 96.26% | 87.50% | 98.58% | 96.67% | 96.36% |
 | Precision@25 | 11.91% | 27.68% | 25.98% | 13.73% | 16.47% |
@@ -155,8 +166,8 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 ## Observations
 
 - **Highest accuracy:** `em0q` (k=10) at 91.10% (1403/1540) on 892 context tokens; `9984` (k=25) is next at 90.84% (1399/1540), then `py2k` (k=10) at 90.19% (1389/1540). These three are not statistically distinguishable from each other; `em0q`'s +2.20 pts over `cdyi` (88.90%) is (see the McNemar note below).
-- **Temporal swing:** `2n68` jumped temporal accuracy to 79.17% (+6.25 pts vs `mzao`, same ingest) — the largest per-category move across all three runs. Likely driven by the wider candidate pool surfacing date-bearing memories that fall outside the top 10.
-- **mzao → 2n68 (same ingest, k=10 → k=20):** +1.62 pts overall (1343 → 1368). Multi-hop dropped (−1.56) while temporal (+6.25) and single-hop (+2.13) gained. Net positive on the same memory store.
+- **Open-domain swing:** `2n68` jumped open-domain accuracy to 79.17% (+6.25 pts vs `mzao`, same ingest) — the largest per-category move across all three runs, and 6 questions out of 96. (This was first read as a temporal gain from date-bearing memories; it was not a temporal category.)
+- **mzao → 2n68 (same ingest, k=10 → k=20):** +1.62 pts overall (1343 → 1368). Temporal dropped (−1.56) while open-domain (+6.25) and multi-hop (+2.13) gained. Net positive on the same memory store.
 - **Retrieval ceiling on k=10 runs:** Hit@10 sits at 94.94–96.04%; failure modes concentrate in answer-generation, not retrieval.
 - **1ksp:** Fresh ingest run at k=20 (`dataSourceRunId` is self). Retrieval Recall@20 = 96.56%, MRR = 0.907, NDCG = 0.893. Serves as the ingest source for `rik3`.
 - **rik3:** Reuses `1ksp` ingest; only retrieval, answering, and evaluation re-run. Retrieval Recall@20 = 96.43%, MRR = 0.909, NDCG = 0.894. Accuracy +0.39 pts vs `1ksp` on the same memory store (1351 → 1357 correct).
@@ -175,7 +186,7 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
   mem0's earlier published figure of 82.7% at k=50 is superseded by the above for comparison purposes.
 - **ho8o (k=20, fresh ingest):** 88.82% (1367/1539) — consistent with prior k=20 runs. Serves as the ingest source for `9984`. One question was skipped during ingest (1539 vs 1540 total).
-- **9984 (k=25, reuses ho8o ingest):** **90.84% (1399/1540) — new all-time best** *at the time; superseded by `em0q`*, up +1.94 pts from cdyi (previous best at 88.90%). All gain comes from widening k from 20 to 25 on the same memory store. Multi-hop improved most (+0.96 vs ho8o), single-hop gained +3.54 pts, and world-knowledge jumped +1.90 pts. Temporal remains the ceiling — only +2.08 pts (72.92% → 75.00%).
+- **9984 (k=25, reuses ho8o ingest):** **90.84% (1399/1540) — new all-time best** *at the time; superseded by `em0q`*, up +1.94 pts from cdyi (previous best at 88.90%). All gain comes from widening k from 20 to 25 on the same memory store. Multi-hop gained most (+3.54 pts vs ho8o), single-hop +1.90 and temporal +0.96. Open-domain remains the ceiling — only +2.08 pts (72.92% → 75.00%).
 - **k=20 → k=25 (same ingest, ho8o → 9984):** +2.02 pts overall. Retrieval Recall@k rose from 95.06% to 96.36%, and MRR improved from 0.887 to 0.896 — the wider candidate pool delivers meaningfully more accurate answers across all question types.
 - **py2k (k=10, fresh ingest): 90.19% (1389/1540)** — the highest k=10 point estimate *until `em0q`*, but see the significance note below before treating it as "best". py2k's retrieval figures read slightly lower than `cdyi`'s (Hit@10 95.52% vs 95.97%, MRR 0.894 vs 0.909), but those are computed against different gold sets (see the gold-set caveat above), so the two are not comparable and **no conclusion about where the accuracy gain originates can be drawn from them.** The gain may well be answer-side; these numbers are not the evidence for it.
 - **Significance (paired McNemar over the same 1540 questions):** reports carry per-question `questionId` and a binary `score`, so runs can be compared pair-wise rather than by point estimate alone.
@@ -194,12 +205,13 @@ Summary of full-suite (1540 questions) LoCoMo runs preserved under `history/`. J
 
   `em0q` is that second fresh-ingest k=10 run. It lands at 91.10%, inside py2k's interval, so read py2k and em0q together as k=10 holding at ~90–91% rather than em0q as a step up from py2k. Both now beat `cdyi` significantly.
 - **Efficiency at constant context cost (the defensible claim):** `mzao` already ran at 966 avg context tokens in April, so py2k's 942 is not a new reduction. What is new is the accuracy at that budget: **87.21% → 90.19% (+2.98 pts, p = 0.0008) at ~950 context tokens.** Holding cost constant, this is both significant and free of the variance objection above. For reference, py2k also beats 88.83% at 1597 tok (`2n68`, k=20) and 87.73% at 1764 tok (`1ksp`, k=20). `em0q` holds this at 892 tokens: 87.21% → 91.10% vs `mzao` (+3.89 pts, p < 0.0001), and it matches `9984`'s k=25 accuracy (p = 0.78) on 37% of its context (892 vs 2412 tokens).
-- **Temporal on py2k:** best temporal of any k=10 run (76.04%) *until `em0q` (77.08%)*, *despite* the worst temporal Hit@10 (80.21% vs 84.38% for `cdyi`) and the worst temporal MRR (0.726). Temporal remains the weakest category in every run regardless of k.
-- **em0q (k=10, fresh ingest): 91.10% (1403/1540)** — the highest point estimate of any run at any k, on 892 avg context tokens. Same k, answerer, judge and base prompt size (1610 tok) as py2k. Every category moved up vs py2k: multi-hop +1.25, temporal +1.04 (best k=10 temporal at 77.08%), single-hop +0.36, world-knowledge +0.95 pts (93.46%, best of any run). Search latency fell from 1836 to 1397 ms median. The Cohere reranker was applied on every query (`reranker_used` is true on all results), so no part of the run fell back to unreranked search.
+- **Open-domain on py2k:** best open-domain of any k=10 run (76.04%) *until `em0q` (77.08%)*, *despite* the worst open-domain Hit@10 (80.21% vs 84.38% for `cdyi`) and the worst open-domain MRR (0.726). Open-domain (96 questions) is the weakest category in every run regardless of k; temporal (321 questions) ranges from 81.62% to 90.34%.
+- **em0q (k=10, fresh ingest): 91.10% (1403/1540)** — the highest point estimate of any run at any k, on 892 avg context tokens. Same k, answerer, judge and base prompt size (1610 tok) as py2k. Every category moved up vs py2k: temporal +1.25, open-domain +1.04 (best k=10 open-domain at 77.08%), multi-hop +0.36, single-hop +0.95 pts (93.46%, best of any run). Search latency fell from 1836 to 1397 ms median. The Cohere reranker was applied on every query (`reranker_used` is true on all results), so no part of the run fell back to unreranked search.
 
 ## How to add a run
 
 1. Place the run directory under `history/<runId>/` containing `report.json`.
 2. Append a row to the headline + per-category tables above and record the run's `k` value.
+   Check the report's per-type keys first: they should be `multi-hop`, `temporal`, `open-domain` and `single-hop`. A report with `world-knowledge` came from a clone without `patches/locomo-category-labels.patch` (re-run `setup.sh`); relabel it with the table at the top.
 3. Only include Hit@10 / MRR / nDCG when the run uses the same `k` as the rest of that table; otherwise leave the cells blank with a footnote.
 4. Note any methodology changes (multiplier, prompt iteration, ingestion source) in the Observations section.

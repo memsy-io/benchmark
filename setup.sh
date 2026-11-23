@@ -216,6 +216,25 @@ if [ -f "$PATCH_RETRIEVED" ]; then
     fi
 fi
 
+# 4. LoCoMo category labels. Before upstream fixed it on 2026-10-11, memorybench
+#    labelled LoCoMo categories 1-4 one place off (category 2, the temporal
+#    questions, was reported as multi-hop, and so on). Clones made after that fix
+#    already have open-domain and skip this.
+PATCH_LOCOMO="$SCRIPT_DIR/patches/locomo-category-labels.patch"
+if [ -f "$PATCH_LOCOMO" ]; then
+    if ! grep -q '"open-domain"' "$TARGET_DIR/src/benchmarks/locomo/index.ts" 2>/dev/null; then
+        (cd "$TARGET_DIR" && git apply "$PATCH_LOCOMO")
+        if [ $? -eq 0 ]; then
+            echo -e "   ✅ Applied locomo-category-labels.patch"
+        else
+            echo -e "${RED}❌ Failed to apply locomo-category-labels.patch${NC}"
+            exit 1
+        fi
+    else
+        echo -e "   ✅ locomo-category-labels.patch already applied"
+    fi
+fi
+
 # =============================================================================
 # Install Dependencies
 # =============================================================================

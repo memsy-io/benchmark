@@ -1,0 +1,46 @@
+diff --git a/src/benchmarks/locomo/index.ts b/src/benchmarks/locomo/index.ts
+index 7b8c86c..aea6c64 100644
+--- a/src/benchmarks/locomo/index.ts
++++ b/src/benchmarks/locomo/index.ts
+@@ -47,18 +47,18 @@ function parseLocomoDate(dateStr: string): { iso: string; formatted: string } |
+ }
+ 
+ export const LOCOMO_QUESTION_TYPES: QuestionTypeRegistry = {
+-  "single-hop": { id: "single-hop", alias: "single", description: "Single-hop fact recall" },
+   "multi-hop": {
+     id: "multi-hop",
+     alias: "multi",
+-    description: "Multi-hop reasoning across sessions",
++    description: "Multi-hop: answer spread across sessions",
+   },
+   temporal: { id: "temporal", alias: "temporal", description: "Temporal reasoning" },
+-  "world-knowledge": {
+-    id: "world-knowledge",
+-    alias: "world",
+-    description: "Commonsense/world knowledge",
++  "open-domain": {
++    id: "open-domain",
++    alias: "open",
++    description: "Open-domain: needs commonsense/world knowledge",
+   },
++  "single-hop": { id: "single-hop", alias: "single", description: "Single-hop fact recall" },
+   adversarial: {
+     id: "adversarial",
+     alias: "adversarial",
+@@ -66,11 +66,12 @@ export const LOCOMO_QUESTION_TYPES: QuestionTypeRegistry = {
+   },
+ }
+ 
++// LoCoMo's own category ids: 1 multi-hop, 2 temporal, 3 open-domain, 4 single-hop, 5 adversarial.
+ const CATEGORY_TO_TYPE: Record<number, string> = {
+-  1: "single-hop",
+-  2: "multi-hop",
+-  3: "temporal",
+-  4: "world-knowledge",
++  1: "multi-hop",
++  2: "temporal",
++  3: "open-domain",
++  4: "single-hop",
+   5: "adversarial",
+ }
+ 
